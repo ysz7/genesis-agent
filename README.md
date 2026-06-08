@@ -64,12 +64,12 @@ needed (`uv` is a standalone binary that brings its own Python):
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/yourname/micro-agent/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.ps1 | iex
 ```
 
 ```bash
 # Linux / macOS
-curl -LsSf https://raw.githubusercontent.com/yourname/micro-agent/main/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.sh | sh
 ```
 
 Then **edit `.env`** (set `PROVIDER` / `MODEL` / `API_KEY`) and launch:
@@ -79,7 +79,7 @@ Every run after that is just `start`.
 ### Manual (clone first)
 
 ```bash
-git clone https://github.com/yourname/micro-agent.git
+git clone https://github.com/ysz7/micro-agent.git
 cd micro-agent
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 ./scripts/install.sh                                           # Linux/macOS
@@ -88,10 +88,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 > 💡 No API key? Use **Ollama**: set `PROVIDER=ollama`, `MODEL=llama3.1:8b`,
 > `BASE_URL=http://localhost:11434/v1` and run fully offline.
 
-> ⚙️ Publishing your own copy? Replace `yourname/micro-agent` in the one-liners
-> and set the repo at the top of `scripts/install.ps1` / `scripts/install.sh`
-> (or `MICROAGENT_REPO=...`). The installer works the same whether run remotely
-> (empty folder → it clones) or locally (inside the repo → it just sets up).
+> ⚙️ Forked it? Point the installer at your own repo by editing `$Repo` / `REPO`
+> at the top of `scripts/install.ps1` / `scripts/install.sh` (or set
+> `MICROAGENT_REPO=...`). It works the same whether run remotely (empty folder →
+> it clones) or locally (inside the repo → it just sets up).
 
 ## ▶️ Usage
 

@@ -1,7 +1,7 @@
 # micro-agent setup / bootstrap (Windows).
 #
 #   Bootstrap into an empty folder (downloads the repo, then sets it up):
-#     irm https://raw.githubusercontent.com/yourname/micro-agent/main/scripts/install.ps1 | iex
+#     irm https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.ps1 | iex
 #
 #   Local (already inside the cloned repo):
 #     powershell -ExecutionPolicy Bypass -File scripts\install.ps1
@@ -21,7 +21,7 @@ function Assert-Ok($what) {
 }
 
 if ($env:MICROAGENT_REPO) { $Repo = $env:MICROAGENT_REPO }
-else { $Repo = "https://github.com/yourname/micro-agent" }
+else { $Repo = "https://github.com/ysz7/micro-agent" }
 
 Write-Host ""
 Write-Host "=== micro-agent setup ==="
