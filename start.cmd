@@ -27,7 +27,12 @@ if errorlevel 1 (
 )
 
 REM `uv run` auto-creates .venv and installs deps on first run.
-%UV% run agent %*
+REM No args -> interactive start menu; with args -> pass straight through.
+if "%~1"=="" (
+    %UV% run agent --menu
+) else (
+    %UV% run agent %*
+)
 
 echo.
 echo [agent exited] press any key to close...

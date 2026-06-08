@@ -292,3 +292,43 @@ def info(msg: str) -> None:
 def answer(text: str) -> None:
     """Render the agent's final answer."""
     console.print(Panel(Text(str(text)), border_style="green", title="[dim]answer[/]"))
+
+
+# ── Server monitor (live request feed for `--serve` from the menu) ───────────
+
+class ServerMonitor:
+    """A rich live feed of incoming server requests.
+
+    Passed to :func:`agent.server.serve`; the server calls these hooks (it never
+    imports rich itself, so headless/Docker stays clean). Each request prints an
+    arrival line and a completion line with status · tokens · elapsed.
+    """
+
+    def __init__(self, agent_name: str, port: int):
+        self.agent_name = agent_name
+        self.port = port
+
+    def on_start(self) -> None:
+        console.print(
+            Panel(
+                f"[bold]{self.agent_name}[/] serving on "
+                f"[bold]http://0.0.0.0:{self.port}[/]\n"
+                f"[dim]POST /task · GET /health · Ctrl+C to stop[/]",
+                border_style=CORAL,
+                title="[dim]server monitor[/]",
+            )
+        )
+
+    def on_request(self, task: str, client: str = "") -> None:
+        ts = time.strftime("%H:%M:%S")
+        line = f"  [dim]{ts}[/] [{CORAL}]→[/] {_esc(_trunc(task, 60))}"
+        if client:
+            line += f"  [dim]({client})[/]"
+        console.print(line)
+
+    def on_result(self, ok: bool, tokens: int, elapsed: float) -> None:
+        mark = "[green]←[/]" if ok else "[red]←[/]"
+        status = "ok" if ok else "error"
+        console.print(
+            f"           {mark} [dim]{status} · {tokens:,} tok · {elapsed:.1f}s[/]"
+        )

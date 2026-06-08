@@ -96,13 +96,14 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 ## ▶️ Usage
 
 **Easiest — the launchers.** Double-click **`start.cmd`** (Windows) or run
-**`./start.sh`** (Linux/macOS) to open a terminal already in the REPL. They `cd`
-into the folder for you, find `uv` (with a clear hint if it's missing), and
-auto-install deps on first run. Pass a task or flags too:
+**`./start.sh`** (Linux/macOS) to open an arrow-key **start menu**: Chat ·
+Settings (edit provider / model / API key in `.env`) · Serve (HTTP with a live
+request monitor) · Quit. The launchers `cd` into the folder, find `uv` (with a
+clear hint if it's missing), and auto-install deps on first run. Pass a task or
+flags to skip the menu:
 
 ```bash
 start.cmd "Summarize the README in three bullets"   # one-shot
-start.cmd                                            # interactive REPL
 start.cmd --serve                                    # HTTP service
 ```
 

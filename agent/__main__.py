@@ -28,6 +28,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         prog="agent", description="micro-agent — a modular Pydantic AI agent"
     )
     parser.add_argument("task", nargs="*", help="task to run (omit for REPL)")
+    parser.add_argument("--menu", action="store_true", help="show the interactive start menu")
     parser.add_argument("--serve", action="store_true", help="run as an HTTP service")
     parser.add_argument("--port", type=int, default=8181, help="port for --serve")
     parser.add_argument("--root", default=None, help="agent folder (default: cwd)")
@@ -46,6 +47,12 @@ def _force_utf8() -> None:
 def main(argv: list[str] | None = None) -> int:
     _force_utf8()
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+
+    if args.menu:
+        from . import menu
+
+        return menu.run(args.root)
+
     config = load_config(args.root)
 
     if args.serve:

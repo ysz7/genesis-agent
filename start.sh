@@ -23,4 +23,9 @@ EOF
 fi
 
 # `uv run` auto-creates .venv and installs deps on first run.
-exec $UV run agent "$@"
+# No args -> interactive start menu; with args -> pass straight through.
+if [ $# -eq 0 ]; then
+  exec $UV run agent --menu
+else
+  exec $UV run agent "$@"
+fi
