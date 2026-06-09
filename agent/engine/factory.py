@@ -8,6 +8,7 @@ without changing this signature.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic_ai import Agent
@@ -43,4 +44,13 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
     if mcp_servers:
         kwargs["toolsets"] = mcp_servers
 
-    return Agent(model, **kwargs)
+    agent = Agent(model, **kwargs)
+
+    # A dynamic system prompt, re-evaluated on every run, so the model always
+    # knows the current local date/time (useful for "today", scheduled jobs, etc.).
+    @agent.system_prompt
+    def _current_datetime() -> str:
+        now = datetime.now().astimezone()
+        return f"The current date and time is {now:%Y-%m-%d %H:%M:%S %Z} ({now:%A})."
+
+    return agent
