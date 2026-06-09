@@ -97,10 +97,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 
 **Easiest — the launchers.** Double-click **`start.cmd`** (Windows) or run
 **`./start.sh`** (Linux/macOS) to open an arrow-key **start menu**: Chat ·
-Settings (edit provider / model / API key in `.env`) · Serve (HTTP with a live
-request monitor) · Quit. The launchers `cd` into the folder, find `uv` (with a
-clear hint if it's missing), and auto-install deps on first run. Pass a task or
-flags to skip the menu:
+Scheduler (recurring tasks while the agent is open) · Settings (edit provider /
+model / API key in `.env`) · Serve (HTTP with a live request monitor) · Quit. The
+launchers `cd` into the folder, find `uv` (with a clear hint if it's missing), and
+auto-install deps on first run. Pass a task or flags to skip the menu:
 
 ```bash
 start.cmd "Summarize the README in three bullets"   # one-shot
@@ -187,6 +187,34 @@ docker compose up --build      # serves POST /task on :8181
 
 `workspace/` is mounted as a volume so state persists. One-shot run:
 `docker run --rm --env-file .env micro-agent uv run agent "your task"`.
+
+## ⏰ Scheduling
+
+Two ways, for two needs:
+
+**In-app (while the agent is open)** — the **Scheduler** menu item. Add recurring
+tasks (e.g. "summarize new feeds" every 5 minutes), hit *Run scheduler (live)*,
+and watch them fire in a live feed; Ctrl+C stops. Jobs are saved in the state
+store, so they're remembered — but they only run while the scheduler is open.
+
+**External (even when closed)** — the agent runs one-shot from a task string, so
+cron / systemd / Task Scheduler drives runs that fire 24/7 without a terminal. Use
+`scripts/run.sh` / `scripts/run.ps1` (not `start.cmd`, which ends with `pause`).
+See [`schedule.example`](schedule.example) for templates.
+
+```bash
+# cron — every hour
+0 * * * * /path/to/agent/scripts/run.sh "Run the hourly briefing" >> /path/to/agent/workspace/cron.log 2>&1
+```
+
+```powershell
+# Windows Task Scheduler — daily at 9am
+$root    = "C:\path\to\agent"
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$root\scripts\run.ps1`" `"Run the hourly briefing`""
+$trigger = New-ScheduledTaskTrigger -Daily -At 9am
+Register-ScheduledTask -TaskName "micro-agent" -Action $action -Trigger $trigger
+```
 
 ## 📁 Project structure
 

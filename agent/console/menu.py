@@ -1,19 +1,22 @@
 """Interactive start menu (arrow-key navigable).
 
 Shown when the agent is launched with no task (``agent --menu``, which is what
-``start.cmd`` / ``start.sh`` call). Lets you start a chat, edit ``.env`` settings
-(provider · model · API key · base URL), run the HTTP server with a live request
-monitor, or quit — all with ↑/↓ + Enter. Falls back to numbered input when the
-terminal isn't interactive.
+``start.cmd`` / ``start.sh`` call). Lets you start a chat, manage the in-app
+scheduler (recurring tasks that fire while the agent is open), edit ``.env``
+settings (provider · model · API key · base URL), run the HTTP server with a live
+request monitor, or quit — all with ↑/↓ + Enter. Falls back to numbered input
+when the terminal isn't interactive.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 from rich.console import Console
+from rich.panel import Panel
 
 from . import display
 
@@ -327,6 +330,148 @@ def _prompt_set(env_file: Path, key: str, label: str) -> None:
     _set_env(env_file, key, value.strip())
 
 
+# ── In-app scheduler ─────────────────────────────────────────────────────────
+# Recurring tasks that fire ONLY while the agent is open (the live loop). Jobs
+# persist in the state store, so they're remembered between sessions. For runs
+# that must fire even when the terminal is closed, use an external scheduler
+# (cron / Task Scheduler) — see schedule.example.
+
+_INTERVALS = [
+    ("every 30 seconds", 30),
+    ("every 1 minute", 60),
+    ("every 5 minutes", 300),
+    ("every 15 minutes", 900),
+    ("every 1 hour", 3600),
+]
+_JOBS_KEY = "scheduled_jobs"
+
+
+def _fmt_every(secs: int) -> str:
+    if secs % 3600 == 0:
+        return f"{secs // 3600}h"
+    if secs % 60 == 0:
+        return f"{secs // 60}m"
+    return f"{secs}s"
+
+
+def _clip(text: str, n: int) -> str:
+    text = str(text).replace("\n", " ").strip()
+    return (text[: n - 1] + "…") if len(text) > n else text
+
+
+def _scheduler(root) -> None:
+    from ..runtime.config import load_config
+    from ..runtime.context import build_deps, close_deps
+    from ..engine.factory import build_agent
+
+    config = load_config(root)
+    deps = build_deps(config)
+    jobs: list[dict] = deps.store.get(_JOBS_KEY, []) or []
+
+    try:
+        while True:
+            summary = (
+                "  ·  ".join(f"{_fmt_every(j['every'])}: {_clip(j['task'], 18)}" for j in jobs)
+                if jobs else "no jobs yet"
+            )
+            options = (["Run scheduler (live)"] if jobs else []) + ["Add job"]
+            if jobs:
+                options.append("Remove job")
+            options.append("Back")
+
+            choice = select("Scheduler", options, subtitle=_clip(summary, 66))
+            picked = options[choice] if choice is not None else "Back"
+
+            if picked == "Run scheduler (live)":
+                agent = build_agent(config)
+                _run_scheduler_live(agent, deps, jobs, config.model)
+            elif picked == "Add job":
+                _add_job(deps, jobs)
+            elif picked == "Remove job":
+                _remove_job(deps, jobs)
+            else:
+                return
+    finally:
+        close_deps(deps)
+
+
+def _add_job(deps, jobs: list[dict]) -> None:
+    console.clear()
+    console.print("\n  [bold]New scheduled task[/]")
+    console.print("  [dim]What should the agent do? Enter to confirm · Esc to cancel.[/]\n")
+    task = _edit_line("  task= ", "")
+    if not task or not task.strip():
+        return
+    every = select("How often?", [label for label, _ in _INTERVALS] + ["custom (seconds)…"])
+    if every is None:
+        return
+    if every < len(_INTERVALS):
+        secs = _INTERVALS[every][1]
+    else:
+        raw = _edit_line("  seconds= ", "60") or "60"
+        try:
+            secs = max(5, int(raw.strip()))
+        except ValueError:
+            secs = 60
+    jobs.append({"task": task.strip(), "every": secs})
+    deps.store.set(_JOBS_KEY, jobs)
+
+
+def _remove_job(deps, jobs: list[dict]) -> None:
+    labels = [f"every {_fmt_every(j['every'])}  ·  {_clip(j['task'], 40)}" for j in jobs]
+    pick = select("Remove which job?", labels + ["Cancel"])
+    if pick is not None and pick < len(jobs):
+        jobs.pop(pick)
+        deps.store.set(_JOBS_KEY, jobs)
+
+
+def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
+    """Passive feed: fire each job on its interval until Ctrl+C. No input prompt."""
+    console.clear()
+    lines = "\n".join(
+        f"[dim]every {_fmt_every(j['every']):>4}[/]  {_clip(j['task'], 56)}" for j in jobs
+    )
+    console.print(
+        Panel(
+            f"{lines}\n[dim]· Ctrl+C to stop[/]",
+            border_style=CORAL,
+            title="[dim]scheduler running[/]",
+        )
+    )
+    next_run = [time.monotonic() for _ in jobs]   # all due immediately on start
+    try:
+        while True:
+            now = time.monotonic()
+            for i, job in enumerate(jobs):
+                if now >= next_run[i]:
+                    _run_job(agent, deps, job)
+                    next_run[i] = time.monotonic() + job["every"]
+            time.sleep(1)
+    except KeyboardInterrupt:
+        console.print("\n  [dim]scheduler stopped[/]\n")
+
+
+def _run_job(agent, deps, job: dict) -> None:
+    import asyncio
+
+    task = job["task"]
+    console.print(f"  [dim]{time.strftime('%H:%M:%S')}[/] [{CORAL}]→[/] {_clip(task, 60)}")
+    start = time.monotonic()
+
+    async def _run():
+        async with agent:                  # starts/stops MCP servers if any
+            return await agent.run(task, deps=deps)
+
+    try:
+        result = asyncio.run(_run())
+        elapsed = time.monotonic() - start
+        console.print(
+            f"           [green]←[/] [dim]{elapsed:.1f}s[/]  {_clip(result.output, 80)}"
+        )
+    except Exception as exc:  # noqa: BLE001 - one bad run shouldn't stop the loop
+        console.print(f"           [red]←[/] [dim]error: {_clip(str(exc), 60)}[/]")
+
+
 # ── Main loop ────────────────────────────────────────────────────────────────
 
 def run(root: str | None = None) -> int:
@@ -334,14 +479,22 @@ def run(root: str | None = None) -> int:
     while True:
         choice = select(
             "Main menu",
-            ["Chat with the agent", "Settings", "Serve (HTTP + live monitor)", "Quit"],
+            [
+                "Chat with the agent",
+                "Scheduler",
+                "Settings",
+                "Serve (HTTP + live monitor)",
+                "Quit",
+            ],
             subtitle=_status(root_path),
         )
         if choice == 0:
             _chat(root)
         elif choice == 1:
-            _settings(root_path)
+            _scheduler(root)
         elif choice == 2:
+            _settings(root_path)
+        elif choice == 3:
             _serve(root)
         else:
             console.clear()
