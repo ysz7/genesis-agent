@@ -484,6 +484,7 @@ def run(root: str | None = None) -> int:
                 "Scheduler",
                 "Settings",
                 "Serve (HTTP + live monitor)",
+                "Create a new agent",
                 "Quit",
             ],
             subtitle=_status(root_path),
@@ -496,6 +497,10 @@ def run(root: str | None = None) -> int:
             _settings(root_path)
         elif choice == 3:
             _serve(root)
+        elif choice == 4:
+            from . import wizard
+
+            wizard.run_wizard(root)
         else:
             console.clear()
             return 0

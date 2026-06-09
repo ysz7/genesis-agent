@@ -128,22 +128,19 @@ curl -X POST localhost:8181/task -H "content-type: application/json" \
 
 ## 🧩 Make a vertical agent
 
-```bash
-./scripts/new.ps1 trading-bot     # Windows  → creates ../trading-bot
-./scripts/new.sh  trading-bot     # Linux/macOS
-```
+Double-click **`scripts/new-agent.cmd`** (Windows) / run **`./scripts/new-agent.sh`**
+(Linux/macOS) — or pick **Create a new agent** in the menu (`uv run agent --new`) —
+to open a **wizard**.
+Enter the name, role, provider, model, and key; it scaffolds a ready-to-run agent
+in a **sibling folder** `../<name>` with a generated `persona.md` / `settings.yaml`
+/ `.env` and a copy of the engine + scripts. The original `agent/` is never touched.
 
-Then, in the new folder:
+Then refine it: edit **`persona.md`**, drop domain tools into **`tools/`** (one
+documented, type-hinted function per tool; add `ctx: RunContext[AgentDeps]` to
+reach the http client / store / settings), and run **`start.cmd`** / `./start.sh`.
 
-1. Edit **`persona.md`** — role, domain knowledge, rules.
-2. Drop domain tools into **`tools/`** — one function per tool (docstring + type
-   hints; add `ctx: RunContext[AgentDeps]` to reach the http client / store / settings).
-3. Set **`.env`** (provider, model, key) and **`settings.yaml`** (feeds, symbols…).
-4. Double-click **`start.cmd`** (or `./start.sh`) — ready.
-
-The engine in `agent/` is never touched. See
-[`examples/rss_research/`](examples/rss_research/) for a fully filled-in vertical
-(drop-in tool · settings-driven feeds · store-based dedup · structured output).
+See [`examples/rss_research/`](examples/rss_research/) for a fully filled-in
+vertical (drop-in tool · settings-driven feeds · store-based dedup · structured output).
 
 ## 🔌 Providers
 
@@ -233,7 +230,7 @@ micro-agent/
 ├── .env                    ✍️ secrets (provider, model, key)
 ├── tools/                  ✍️ drop-in custom tools (auto-discovered)
 ├── examples/               filled-in verticals to copy from
-├── scripts/                install · run · new · fleet helpers (ps1 + sh)
+├── scripts/                install · run · fleet · new-agent helpers (ps1/sh/cmd)
 ├── start.cmd / start.sh    double-click launchers (start menu)
 └── Dockerfile · docker-compose.yml
 ```
