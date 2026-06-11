@@ -15,6 +15,7 @@ from pydantic_ai import Agent
 
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
+from .compaction import build_history_processor
 from .mcp import load_mcp_servers
 from .model import build_model
 from .registry import discover_tools
@@ -43,6 +44,15 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
     # new Pydantic AI ModelSettings keys work without changing the template.
     if config.model_settings:
         kwargs["model_settings"] = config.model_settings
+
+    # History auto-compaction: when the conversation outgrows the context
+    # budget, old messages are replaced by a model-written summary (see
+    # engine/compaction.py). Disabled via settings `compaction: {enabled: false}`.
+    processor = build_history_processor(config, model)
+    if processor is not None:
+        from pydantic_ai.capabilities import ProcessHistory
+
+        kwargs["capabilities"] = [ProcessHistory(processor)]
 
     mcp_servers = load_mcp_servers(config)
     if mcp_servers:

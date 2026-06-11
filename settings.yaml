@@ -16,6 +16,20 @@ retries: 2
 # One-shot runs and the HTTP server are stateless regardless.
 history_keep: 40
 
+# ── History auto-compaction ──────────────────────────────────────────────────
+# When the conversation outgrows ~60% of context_budget, everything except the
+# last `keep` messages is replaced by a model-written summary, so facts from
+# the start of a long session survive instead of being truncated away.
+# context_budget is your model's usable context window, in tokens. Presets:
+#   GPT-4o / Claude / most cloud models : 100000
+#   qwen2.5 via Ollama (32k context)    : 24000
+#   llama3.1:8b at default num_ctx (8k) : 6000
+context_budget: 100000
+compaction:
+  enabled: true
+  keep: 12          # recent messages kept verbatim
+  # max_tokens: 1024  # cap on the summary itself
+
 # ── Run guardrails ───────────────────────────────────────────────────────────
 # Per-run ceilings (pydantic_ai.usage.UsageLimits). request_limit caps how many
 # model requests a single task may make — the cheapest insurance against a
