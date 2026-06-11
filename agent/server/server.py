@@ -14,6 +14,7 @@ rendering differs. This module deliberately never imports ``display``.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,14 +25,31 @@ from ..runtime.context import build_deps, close_deps
 from ..engine.factory import build_agent
 
 
-def _make_httpd(config: Config, port: int, monitor):
+def _make_httpd(config: Config, host: str, port: int, monitor):
     """Build the agent + deps and a configured HTTP server. Returns (httpd, deps)."""
     agent = build_agent(config)
     deps = build_deps(config)
+    token = config.server_token
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):  # quiet default logging
             pass
+
+        def _authorized(self) -> bool:
+            """True if no token is configured or the bearer token matches.
+
+            ``/health`` is always open (probes/orchestrators need it); every
+            other endpoint requires ``Authorization: Bearer <SERVER_TOKEN>`` when
+            a token is set. On failure this sends 401 and returns False.
+            """
+            if not token:
+                return True
+            header = self.headers.get("authorization", "")
+            expected = f"Bearer {token}"
+            if len(header) == len(expected) and hmac.compare_digest(header, expected):
+                return True
+            self._send(401, {"error": "unauthorized"})
+            return False
 
         def handle(self) -> None:
             # A client that disconnects mid-request (e.g. closes the browser tab)
@@ -68,6 +86,8 @@ def _make_httpd(config: Config, port: int, monitor):
             if parsed.path == "/health":
                 self._send(200, {"status": "ok", "agent": config.agent_name})
             elif parsed.path == "/task":
+                if not self._authorized():
+                    return
                 # Browser-friendly: open  http://localhost:PORT/task?q=your+task
                 params = parse_qs(parsed.query)
                 task = (params.get("q") or params.get("task") or [""])[0]
@@ -82,6 +102,8 @@ def _make_httpd(config: Config, port: int, monitor):
             self._detailed = False
             if self.path != "/task":
                 self._send(404, {"error": "not found"})
+                return
+            if not self._authorized():
                 return
             length = int(self.headers.get("content-length", 0))
             raw = self.rfile.read(length) if length else b"{}"
@@ -117,21 +139,29 @@ def _make_httpd(config: Config, port: int, monitor):
         async with agent:
             return await agent.run(task, deps=deps)
 
-    return ThreadingHTTPServer(("0.0.0.0", port), Handler), deps
+    return ThreadingHTTPServer((host, port), Handler), deps
 
 
-def serve(config: Config, port: int = 8181, monitor=None) -> int:
+def serve(config: Config, port: int = 8181, monitor=None, host: str = "127.0.0.1") -> int:
     """Build the agent once and serve ``POST /task`` until interrupted (blocking).
+
+    Binds *host* (default ``127.0.0.1`` — localhost only). Pass ``0.0.0.0`` to
+    accept connections from other machines, e.g. inside a container reached
+    through a published port (the Dockerfile does exactly this).
 
     *monitor* (optional) receives ``on_start`` / ``on_request`` / ``on_result``
     callbacks for a live request feed. It's the only rendering hook; this module
     never imports rich, so headless and Docker runs stay dependency-clean.
     """
-    httpd, deps = _make_httpd(config, port, monitor)
+    httpd, deps = _make_httpd(config, host, port, monitor)
     if monitor:
         monitor.on_start()
     else:
-        print(f"genesis-agent '{config.agent_name}' serving on http://0.0.0.0:{port}  (POST /task)")
+        auth = "  (bearer auth on)" if config.server_token else ""
+        print(
+            f"genesis-agent '{config.agent_name}' serving on "
+            f"http://{host}:{port}  (POST /task){auth}"
+        )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -142,7 +172,7 @@ def serve(config: Config, port: int = 8181, monitor=None) -> int:
     return 0
 
 
-def start_background(config: Config, port: int = 8181, monitor=None):
+def start_background(config: Config, port: int = 8181, monitor=None, host: str = "127.0.0.1"):
     """Serve in a daemon thread; returns (httpd, deps) for the caller to drive.
 
     Used by the interactive serve console: the HTTP server runs in the background
@@ -151,7 +181,7 @@ def start_background(config: Config, port: int = 8181, monitor=None):
     """
     import threading
 
-    httpd, deps = _make_httpd(config, port, monitor)
+    httpd, deps = _make_httpd(config, host, port, monitor)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, deps
 

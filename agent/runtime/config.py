@@ -31,6 +31,8 @@ class Config:
     persona: str
     settings: dict = field(default_factory=dict)
     workspace: Path = field(default_factory=lambda: Path("workspace"))
+    # Optional bearer token for the HTTP server (secret → .env, not settings).
+    server_token: str | None = None
 
     @property
     def agent_name(self) -> str:
@@ -63,6 +65,7 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
     model = (os.getenv("MODEL") or _default_model(provider)).strip()
     api_key = os.getenv("API_KEY") or _provider_key(provider)
     base_url = os.getenv("BASE_URL") or _default_base_url(provider)
+    server_token = os.getenv("SERVER_TOKEN") or None
 
     # 2. vertical config
     settings: dict = {}
@@ -92,6 +95,7 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
         persona=persona,
         settings=settings,
         workspace=workspace,
+        server_token=server_token,
     )
 
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -33,6 +33,10 @@ class AgentDeps:
     store: Store
     http: httpx.Client
     workspace: Path
+    # Confirmation gate for ``tools.confirm`` (set by the CLI to a y/N prompt).
+    # ``(tool_name, rendered_args) -> approve?``. ``None`` means no human is
+    # available (headless/server): a confirm-listed tool then refuses to run.
+    confirm_hook: Callable[[str, str], bool] | None = None
     # Verticals add their own clients here (e.g. ``broker: BrokerClient``)
     extra: dict[str, Any] = field(default_factory=dict)
 

@@ -38,6 +38,9 @@ from ..engine.registry import tool_names
 EMERALD = "#10b981"
 console = Console()
 
+# The live spinner currently running (if any), so a confirm prompt can pause it.
+_active_status: Any = None
+
 
 # ── Banner ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +110,8 @@ async def run_streamed(
     pending: dict[str, tuple[str, Any]] = {}
 
     status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
+    global _active_status
+    _active_status = status
     status.start()
     try:
         # Entering the agent context starts any MCP servers (no-op without them).
@@ -147,6 +152,7 @@ async def run_streamed(
             result = run.result
     finally:
         status.stop()
+        _active_status = None
 
     _tree_close(step)
     # `result.usage` is a property in current Pydantic AI; older versions
@@ -295,6 +301,29 @@ def answer(text: str) -> None:
     console.print(Panel(Text(str(text)), border_style="green", title="[dim]answer[/]"))
 
 
+def confirm_tool(name: str, rendered_args: str) -> bool:
+    """Interactive y/N gate for confirm-listed tools (the CLI ``confirm_hook``).
+
+    Pauses the live spinner (it would fight the prompt for the cursor), asks, and
+    resumes. A bare Enter, EOF, or Ctrl+C declines — the safe default.
+    """
+    paused = _active_status
+    if paused is not None:
+        paused.stop()
+    try:
+        detail = f"  [dim]{_esc(_trunc(rendered_args, 80))}[/]" if rendered_args else ""
+        console.print(f"  [yellow]confirm[/] run [bold]{name}[/]{detail}")
+        try:
+            resp = console.input("  approve? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return False
+        return resp in ("y", "yes")
+    finally:
+        if paused is not None:
+            paused.start()
+
+
 # ── Server monitor (live request feed for `--serve` from the menu) ───────────
 
 class ServerMonitor:
@@ -306,9 +335,10 @@ class ServerMonitor:
     :meth:`print_stats`.
     """
 
-    def __init__(self, agent_name: str, port: int):
+    def __init__(self, agent_name: str, port: int, host: str = "127.0.0.1"):
         self.agent_name = agent_name
         self.port = port
+        self.host = host
         self.started = time.time()
         self.requests = 0
         self.errors = 0
@@ -320,7 +350,7 @@ class ServerMonitor:
         console.print(
             Panel(
                 f"[bold]{self.agent_name}[/] serving on "
-                f"[bold]http://0.0.0.0:{self.port}[/]   [dim]· Ctrl+C to stop[/]\n"
+                f"[bold]http://{self.host}:{self.port}[/]   [dim]· Ctrl+C to stop[/]\n"
                 f"[dim]browser  http://localhost:{self.port}/task?q=hi[/]\n"
                 f"[dim]health   http://localhost:{self.port}/health[/]\n"
                 f"[dim]curl     curl -X POST localhost:{self.port}/task "

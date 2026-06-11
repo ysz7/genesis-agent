@@ -32,6 +32,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--new", action="store_true", help="wizard to scaffold a new vertical agent")
     parser.add_argument("--serve", action="store_true", help="run as an HTTP service")
     parser.add_argument("--port", type=int, default=8181, help="port for --serve")
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="bind address for --serve (default localhost; use 0.0.0.0 in containers)",
+    )
     parser.add_argument("--root", default=None, help="agent folder (default: cwd)")
     return parser.parse_args(argv)
 
@@ -64,10 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.serve:
         from . import server
 
-        return server.serve(config, port=args.port)
+        return server.serve(config, port=args.port, host=args.host)
 
     agent = build_agent(config)
     deps = build_deps(config)
+    deps.confirm_hook = display.confirm_tool  # interactive y/N for confirm-gated tools
     try:
         if args.task:
             return _one_shot(agent, " ".join(args.task), deps, config.model)

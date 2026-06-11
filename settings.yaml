@@ -11,6 +11,23 @@ store: state.json
 # How many times Pydantic AI retries a failed tool/model call.
 retries: 2
 
+# ── Filesystem sandbox ───────────────────────────────────────────────────────
+# read_file/write_file/list_dir refuse paths outside workspace/ (relative ../
+# escapes and absolute paths alike). Set to false ONLY for trusted setups.
+# NOTE: this does not constrain run_shell — gate that via `tools:` below.
+# sandbox: true
+
+# ── Tool policy ──────────────────────────────────────────────────────────────
+# disable: tools never registered (the model can't see or call them).
+# confirm: tools that require a human y/N before each call. In the CLI you get a
+#   prompt; headless (--serve) has no human, so a confirm-listed tool refuses to
+#   run and returns a notice instead. Rationale: fetch_url content is
+#   attacker-controlled (prompt injection), so an unconfirmed run_shell is an
+#   injection-to-RCE chain — confirm or disable run_shell for untrusted inputs.
+# tools:
+#   disable: []
+#   confirm: [run_shell]
+
 # ── External MCP tool servers (optional) ─────────────────────────────────────
 # Opt-in: install with `uv sync --extra mcp`, then declare servers here. Their
 # tools appear to the agent like built-ins (prefixed with `name`). stdio servers

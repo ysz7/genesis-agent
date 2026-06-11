@@ -4,7 +4,9 @@ services:
   agent:
     build: .
     env_file:
+      # Holds PROVIDER/MODEL/API_KEY and, optionally, SERVER_TOKEN for bearer auth.
       - .env
+    # The image's CMD already binds 0.0.0.0 so the published port is reachable.
     ports:
       - "8181:8181"
     volumes:

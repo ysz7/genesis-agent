@@ -6,8 +6,14 @@ AI derives the JSON schema from the signature, so there is no schema code of our
 own. Tools that need shared state take ``RunContext[AgentDeps]`` as the first
 parameter and reach the http client / store / settings via ``ctx.deps``.
 
-Relative paths resolve inside the agent's ``workspace/`` sandbox; absolute paths
-are honored as given.
+**Filesystem sandbox.** ``read_file`` / ``write_file`` / ``list_dir`` resolve
+their argument and refuse anything that lands outside the agent's ``workspace/``
+— relative ``../`` escapes and absolute paths to elsewhere both return an error
+string to the model rather than touching the host filesystem. Set
+``sandbox: false`` in ``settings.yaml`` to opt out (trusted setups only). This
+guard does NOT extend to ``run_shell``: a shell command can ``cd`` anywhere, so
+treat ``run_shell`` as full host access and gate it via the tool policy
+(``tools.confirm`` / ``tools.disable``) when that matters.
 """
 
 from __future__ import annotations
@@ -20,18 +26,46 @@ from pydantic_ai import RunContext
 from ..runtime.context import AgentDeps
 
 
+class _SandboxEscape(Exception):
+    """A path resolved outside the workspace while the sandbox was enabled."""
+
+
 def _resolve(ctx: RunContext[AgentDeps], path: str) -> Path:
-    p = Path(path)
-    return p if p.is_absolute() else (ctx.deps.workspace / p)
+    """Resolve *path* against the workspace, enforcing the sandbox.
+
+    Relative paths resolve inside ``workspace/``; absolute paths are taken as
+    given. With the sandbox on (the default), the resolved target must stay
+    within the resolved workspace or :class:`_SandboxEscape` is raised. Both
+    sides are ``.resolve()``-d so symlinks and Windows drive-letter casing
+    compare like-for-like. ``sandbox: false`` restores raw resolution.
+    """
+    workspace = ctx.deps.workspace
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+
+    if ctx.deps.settings.get("sandbox", True) is False:
+        return candidate
+
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(workspace.resolve()):
+        raise _SandboxEscape(
+            f"Error: path escapes the workspace sandbox: {path}"
+        )
+    return resolved
 
 
 def read_file(ctx: RunContext[AgentDeps], path: str) -> str:
     """Read and return the text contents of a file.
 
     Args:
-        path: File path. Relative paths are resolved inside the workspace.
+        path: File path. Relative paths are resolved inside the workspace;
+            paths outside the workspace are refused unless the sandbox is off.
     """
-    target = _resolve(ctx, path)
+    try:
+        target = _resolve(ctx, path)
+    except _SandboxEscape as exc:
+        return str(exc)
     if not target.exists():
         return f"Error: file not found: {target}"
     try:
@@ -44,10 +78,14 @@ def write_file(ctx: RunContext[AgentDeps], path: str, content: str) -> str:
     """Write text to a file, creating parent directories as needed.
 
     Args:
-        path: Destination path. Relative paths are written inside the workspace.
+        path: Destination path. Relative paths are written inside the workspace;
+            paths outside the workspace are refused unless the sandbox is off.
         content: The full text to write (overwrites any existing file).
     """
-    target = _resolve(ctx, path)
+    try:
+        target = _resolve(ctx, path)
+    except _SandboxEscape as exc:
+        return str(exc)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return f"Wrote {len(content)} chars to {target}"
@@ -57,9 +95,13 @@ def list_dir(ctx: RunContext[AgentDeps], path: str = ".") -> list[str]:
     """List the entries of a directory (directories are suffixed with '/').
 
     Args:
-        path: Directory path. Relative paths are resolved inside the workspace.
+        path: Directory path. Relative paths are resolved inside the workspace;
+            paths outside the workspace are refused unless the sandbox is off.
     """
-    target = _resolve(ctx, path)
+    try:
+        target = _resolve(ctx, path)
+    except _SandboxEscape as exc:
+        return [str(exc)]
     if not target.exists():
         return [f"Error: directory not found: {target}"]
     if not target.is_dir():

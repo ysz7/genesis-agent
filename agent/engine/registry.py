@@ -12,12 +12,16 @@ parameter — Pydantic AI detects that automatically.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import inspect
 from pathlib import Path
 from typing import Callable
 
+from pydantic_ai import RunContext
+
 from ..runtime.config import Config
+from ..runtime.context import AgentDeps
 from ..tools.builtins import BUILTIN_TOOLS
 
 
@@ -49,7 +53,18 @@ def _load_module_functions(py_file: Path) -> list[Callable]:
 
 
 def discover_tools(config: Config) -> list[Callable]:
-    """Return built-in tools followed by auto-discovered vertical tools."""
+    """Return built-in + vertical tools, after applying the ``tools:`` policy.
+
+    ``settings.yaml`` may carry a ``tools:`` block::
+
+        tools:
+          disable: [run_shell]              # never registered — model can't see it
+          confirm: [run_shell, write_file]  # gated behind deps.confirm_hook
+
+    ``disable`` filters tools out entirely; ``confirm`` wraps them so each call
+    is approved by a human first (or refused when no confirmation channel is
+    available, e.g. headless serving).
+    """
     tools: list[Callable] = list(BUILTIN_TOOLS)
 
     tools_dir = config.root / "tools"
@@ -58,7 +73,65 @@ def discover_tools(config: Config) -> list[Callable]:
             if py_file.name.startswith("_"):  # _example.py and friends are patterns
                 continue
             tools.extend(_load_module_functions(py_file))
+
+    policy = config.settings.get("tools") or {}
+    disable = set(policy.get("disable") or [])
+    confirm = set(policy.get("confirm") or [])
+
+    tools = [t for t in tools if getattr(t, "__name__", "") not in disable]
+    if confirm:
+        tools = [
+            _wrap_confirm(t) if getattr(t, "__name__", "") in confirm else t
+            for t in tools
+        ]
     return tools
+
+
+def _wrap_confirm(tool: Callable) -> Callable:
+    """Gate *tool* behind ``ctx.deps.confirm_hook`` without altering its schema.
+
+    ``functools.wraps`` + an explicit ``__signature__`` keep Pydantic AI deriving
+    the model-facing schema from the original signature. The wrapper always has a
+    ``RunContext`` first parameter (the tool's own, or one we inject) so it can
+    reach ``deps.confirm_hook`` — Pydantic AI passes that context positionally and
+    hides it from the model.
+    """
+    sig = inspect.signature(tool)
+    params = list(sig.parameters.values())
+    has_ctx = bool(params) and "RunContext" in str(params[0].annotation)
+    name = getattr(tool, "__name__", "tool")
+
+    @functools.wraps(tool)
+    def wrapper(*args, **kwargs):
+        ctx = args[0] if args else None
+        hook = getattr(getattr(ctx, "deps", None), "confirm_hook", None)
+        rendered = _render_call(args[1:], kwargs)
+        if hook is None:
+            return (
+                f"Refused: tool '{name}' is confirm-gated but no confirmation "
+                f"channel is available (headless run); it was not executed."
+            )
+        if not hook(name, rendered):
+            return f"Refused: '{name}' was declined by the operator; not executed."
+        call_args = args if has_ctx else args[1:]
+        return tool(*call_args, **kwargs)
+
+    if has_ctx:
+        wrapper.__signature__ = sig  # type: ignore[attr-defined]
+    else:
+        ctx_param = inspect.Parameter(
+            "_ctx", inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=RunContext[AgentDeps],
+        )
+        wrapper.__signature__ = sig.replace(parameters=[ctx_param, *params])  # type: ignore[attr-defined]
+    return wrapper
+
+
+def _render_call(pos: tuple, kwargs: dict) -> str:
+    """A short, human-readable rendering of a tool call's arguments."""
+    items = [str(a) for a in pos] + [f"{k}={v}" for k, v in kwargs.items()]
+    s = ", ".join(items).replace("\n", " ")
+    return s if len(s) <= 300 else s[:299] + "…"
 
 
 def tool_names(tools: list[Callable]) -> list[str]:
