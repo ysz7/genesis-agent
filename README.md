@@ -6,6 +6,7 @@
 
 *Copy the folder · edit one file · drop in tools → a specialized agent is ready.*
 
+![CI](https://github.com/ysz7/genesis-agent/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-064e3b?logo=python&logoColor=white)
 ![Pydantic AI](https://img.shields.io/badge/built%20on-Pydantic%20AI-047857)
 ![uv](https://img.shields.io/badge/packaged%20with-uv-059669)
