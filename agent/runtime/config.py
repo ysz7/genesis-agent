@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -33,6 +34,13 @@ class Config:
     workspace: Path = field(default_factory=lambda: Path("workspace"))
     # Optional bearer token for the HTTP server (secret → .env, not settings).
     server_token: str | None = None
+    # Run-time guardrails from settings.yaml `limits:` — a
+    # ``pydantic_ai.usage.UsageLimits`` (or None). Passed at every run site, not
+    # to the Agent constructor (limits are a per-run argument).
+    usage_limits: Any = None
+    # settings.yaml `model_settings:` — a plain dict (ModelSettings TypedDict)
+    # passed to ``Agent(model_settings=...)``: temperature, max_tokens, timeout…
+    model_settings: dict | None = None
 
     @property
     def agent_name(self) -> str:
@@ -86,6 +94,10 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
     workspace = root_path / str(settings.get("workspace", "workspace"))
     workspace.mkdir(parents=True, exist_ok=True)
 
+    model_settings = settings.get("model_settings")
+    if not isinstance(model_settings, dict):
+        model_settings = None
+
     return Config(
         root=root_path,
         provider=provider,
@@ -96,7 +108,32 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
         settings=settings,
         workspace=workspace,
         server_token=server_token,
+        usage_limits=_build_usage_limits(settings),
+        model_settings=model_settings,
     )
+
+
+def _build_usage_limits(settings: dict) -> Any:
+    """Build a ``UsageLimits`` from the settings ``limits:`` block, or None.
+
+    Only the keys present are passed, so new ``UsageLimits`` fields can be used
+    from settings without touching this function (forward-compatible). Imported
+    lazily to keep ``config`` free of heavy imports at module load.
+    """
+    limits = settings.get("limits")
+    if not isinstance(limits, dict) or not limits:
+        return None
+    from pydantic_ai.usage import UsageLimits
+
+    known = (
+        "request_limit",
+        "total_tokens_limit",
+        "input_tokens_limit",
+        "output_tokens_limit",
+        "tool_calls_limit",
+    )
+    kwargs = {k: limits[k] for k in known if k in limits}
+    return UsageLimits(**kwargs) if kwargs else None
 
 
 def _default_model(provider: str) -> str:

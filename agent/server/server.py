@@ -137,7 +137,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
     async def _run(task: str):
         # `async with agent` starts/stops any MCP servers (no-op without them).
         async with agent:
-            return await agent.run(task, deps=deps)
+            return await agent.run(task, deps=deps, usage_limits=config.usage_limits)
 
     return ThreadingHTTPServer((host, port), Handler), deps
 

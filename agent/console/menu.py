@@ -460,7 +460,7 @@ def _run_job(agent, deps, job: dict) -> None:
 
     async def _run():
         async with agent:                  # starts/stops MCP servers if any
-            return await agent.run(task, deps=deps)
+            return await agent.run(task, deps=deps, usage_limits=deps.config.usage_limits)
 
     try:
         result = asyncio.run(_run())

@@ -66,6 +66,11 @@ def print_banner(config: Config, tools: list) -> None:
     left.add_row("model", config.model)
     left.add_row("api", f"{dot} {'ok' if api_ok else 'missing key'}")
     left.add_row("workspace", f"[dim]{_short(config.workspace)}[/]")
+    if config.model_settings:
+        tuning = ", ".join(f"{k}={v}" for k, v in config.model_settings.items())
+        left.add_row("tuning", f"[dim]{tuning}[/]")
+    if config.usage_limits is not None:
+        left.add_row("limits", f"[dim]{_limits_summary(config.usage_limits)}[/]")
 
     names = tool_names(tools)
     right = Table.grid(padding=(0, 1))
@@ -96,6 +101,17 @@ def _short(p: Path | str, n: int = 36) -> str:
     return "…" + s[-(n - 1):] if len(s) > n else s
 
 
+def _limits_summary(limits: Any) -> str:
+    """Compact one-line view of the set fields on a ``UsageLimits``."""
+    fields = ("request_limit", "total_tokens_limit", "tool_calls_limit")
+    parts = [
+        f"{f}={getattr(limits, f)}"
+        for f in fields
+        if getattr(limits, f, None) is not None
+    ]
+    return ", ".join(parts) or "set"
+
+
 # ── Streamed run with live tree ─────────────────────────────────────────────
 
 async def run_streamed(
@@ -116,7 +132,9 @@ async def run_streamed(
     try:
         # Entering the agent context starts any MCP servers (no-op without them).
         async with agent:
-            async with agent.iter(task, deps=deps) as run:
+            async with agent.iter(
+                task, deps=deps, usage_limits=deps.config.usage_limits
+            ) as run:
                 async for node in run:
                     if Agent.is_model_request_node(node):
                         text = ""

@@ -39,6 +39,10 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
     }
     if output_type is not None:
         kwargs["output_type"] = output_type
+    # Model knobs (temperature, max_tokens, timeout, …) passed through as-is so
+    # new Pydantic AI ModelSettings keys work without changing the template.
+    if config.model_settings:
+        kwargs["model_settings"] = config.model_settings
 
     mcp_servers = load_mcp_servers(config)
     if mcp_servers:

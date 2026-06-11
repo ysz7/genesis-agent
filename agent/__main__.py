@@ -16,6 +16,8 @@ import argparse
 import asyncio
 import sys
 
+from pydantic_ai.exceptions import UsageLimitExceeded
+
 from .console import display
 from .runtime.config import load_config
 from .runtime.context import build_deps, close_deps
@@ -87,6 +89,9 @@ def _one_shot(agent, task: str, deps, model: str) -> int:
     except KeyboardInterrupt:
         display.warn("interrupted")
         return 130
+    except UsageLimitExceeded as exc:
+        display.warn(f"usage limit reached — {exc}")
+        return 0
     display.answer(result.output)
     return 0
 
@@ -117,6 +122,8 @@ def _repl(agent, config, deps) -> int:
             display.answer(result.output)
         except KeyboardInterrupt:
             display.warn("interrupted")
+        except UsageLimitExceeded as exc:
+            display.warn(f"usage limit reached — {exc}")
         except Exception as exc:  # noqa: BLE001 - keep the REPL alive
             display.err(str(exc))
     return 0

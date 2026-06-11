@@ -11,6 +11,22 @@ store: state.json
 # How many times Pydantic AI retries a failed tool/model call.
 retries: 2
 
+# ── Run guardrails ───────────────────────────────────────────────────────────
+# Per-run ceilings (pydantic_ai.usage.UsageLimits). request_limit caps how many
+# model requests a single task may make — the cheapest insurance against a
+# runaway tool loop burning tokens. Add total_tokens_limit to cap spend per run.
+# Hitting a limit ends the run with a clean message, not a stack trace.
+limits:
+  request_limit: 25
+  # total_tokens_limit: 200000
+
+# ── Model knobs ──────────────────────────────────────────────────────────────
+# Anything pydantic_ai's ModelSettings accepts, passed through as-is.
+# model_settings:
+#   temperature: 0
+#   max_tokens: 2048
+#   timeout: 60
+
 # ── Filesystem sandbox ───────────────────────────────────────────────────────
 # read_file/write_file/list_dir refuse paths outside workspace/ (relative ../
 # escapes and absolute paths alike). Set to false ONLY for trusted setups.
