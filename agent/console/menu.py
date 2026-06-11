@@ -454,6 +454,8 @@ def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
 def _run_job(agent, deps, job: dict) -> None:
     import asyncio
 
+    from ..runtime.runlog import append_run
+
     task = job["task"]
     console.print(f"  [dim]{time.strftime('%H:%M:%S')}[/] [{EMERALD}]→[/] {_clip(task, 60)}")
     start = time.monotonic()
@@ -468,8 +470,13 @@ def _run_job(agent, deps, job: dict) -> None:
         console.print(
             f"           [green]←[/] [dim]{elapsed:.1f}s[/]  {_clip(result.output, 80)}"
         )
+        u = result.usage
+        usage = u if hasattr(u, "input_tokens") else u()
+        tokens = (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
+        append_run(deps, task, elapsed, tokens, ok=True)
     except Exception as exc:  # noqa: BLE001 - one bad run shouldn't stop the loop
         console.print(f"           [red]←[/] [dim]error: {_clip(str(exc), 60)}[/]")
+        append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
 
 
 # ── Main loop ────────────────────────────────────────────────────────────────

@@ -8,6 +8,8 @@ without changing this signature.
 
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime
 from typing import Any
 
@@ -20,6 +22,35 @@ from .mcp import load_mcp_servers
 from .model import build_model
 from .registry import discover_tools
 
+logger = logging.getLogger("agent.obs")
+
+_observability_done = False
+
+
+def _setup_observability() -> None:
+    """Opt-in Logfire tracing — lean by default, same pattern as MCP.
+
+    Active only when ``LOGFIRE_TOKEN`` is set in ``.env`` AND the optional
+    ``logfire`` package is installed (``uv sync --extra obs``); otherwise it
+    degrades silently with a debug-level hint. Configured once per process.
+    """
+    global _observability_done
+    if _observability_done:
+        return
+    _observability_done = True
+    if not os.getenv("LOGFIRE_TOKEN"):
+        return
+    try:
+        import logfire
+    except ImportError:
+        logger.debug(
+            "LOGFIRE_TOKEN is set but logfire isn't installed — uv sync --extra obs"
+        )
+        return
+    logfire.configure()
+    logfire.instrument_pydantic_ai()
+    logger.info("logfire tracing enabled")
+
 
 def build_agent(config: Config, output_type: Any | None = None) -> Agent:
     """Compose ``Agent(model, system_prompt, deps_type, output_type, tools)``.
@@ -29,6 +60,7 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
         output_type: Optional Pydantic model for structured output. When ``None``
             the agent returns plain text.
     """
+    _setup_observability()
     model = build_model(config)
     tools = discover_tools(config)
 

@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
+from ..runtime.runlog import append_run
 from ..engine.factory import build_agent
 
 
@@ -131,12 +132,16 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             try:
                 result = asyncio.run(_run(task))
             except Exception as exc:  # noqa: BLE001 - the task itself failed
+                elapsed = time.monotonic() - start
                 if monitor:
-                    monitor.on_result(False, 0, time.monotonic() - start)
+                    monitor.on_result(False, 0, elapsed)
+                append_run(deps, task, elapsed, 0, ok=False, error=str(exc))
                 self._send(500, {"error": str(exc)})
                 return
+            elapsed = time.monotonic() - start
             if monitor:
-                monitor.on_result(True, _tokens(result), time.monotonic() - start)
+                monitor.on_result(True, _tokens(result), elapsed)
+            append_run(deps, task, elapsed, _tokens(result), ok=True)
             self._send(200, {"output": _jsonable(result.output)})
 
     async def _run(task: str):

@@ -11,6 +11,10 @@ store: state.json
 # How many times Pydantic AI retries a failed tool/model call.
 retries: 2
 
+# Local run log: append one JSON line per run (task, duration, tokens, ok/err)
+# to workspace/runs.jsonl. Greppable history, zero external services.
+# log_runs: true
+
 # REPL conversation memory: how many recent messages to carry between turns
 # (older ones are dropped to keep context bounded). /clear forgets the session.
 # One-shot runs and the HTTP server are stateless regardless.

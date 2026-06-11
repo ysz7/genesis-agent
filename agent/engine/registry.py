@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 import importlib.util
 import inspect
+import logging
 from pathlib import Path
 from typing import Callable
 
@@ -23,6 +24,8 @@ from pydantic_ai import RunContext
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from ..tools.builtins import BUILTIN_TOOLS
+
+logger = logging.getLogger("agent.registry")
 
 
 def _load_module_functions(py_file: Path) -> list[Callable]:
@@ -35,7 +38,7 @@ def _load_module_functions(py_file: Path) -> list[Callable]:
     try:
         spec.loader.exec_module(module)
     except Exception as exc:  # noqa: BLE001 - one bad tool file shouldn't kill startup
-        print(f"  ! skipped tools/{py_file.name}: {exc}")
+        logger.warning("skipped tools/%s: %s", py_file.name, exc)
         return []
 
     funcs: list[Callable] = []

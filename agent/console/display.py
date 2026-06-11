@@ -12,6 +12,7 @@ module, so headless and server runs stay free of ``rich``.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -33,6 +34,7 @@ from rich.text import Text
 
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
+from ..runtime.runlog import append_run
 from ..engine.registry import tool_names
 
 EMERALD = "#10b981"
@@ -40,6 +42,27 @@ console = Console()
 
 # The live spinner currently running (if any), so a confirm prompt can pause it.
 _active_status: Any = None
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """Route the ``agent`` logger tree through the rich console (CLI only).
+
+    Engine/runtime modules log via ``logging.getLogger("agent.*")`` and never
+    print; this attaches the one rich handler so those records render nicely in
+    interactive runs. The server path never calls this — it stays on plain
+    ``logging`` (and never imports this module).
+    """
+    from rich.logging import RichHandler
+
+    root = logging.getLogger("agent")
+    if any(isinstance(h, RichHandler) for h in root.handlers):
+        return  # already configured (REPL restarted from the menu, etc.)
+    handler = RichHandler(
+        console=console, show_time=False, show_path=False, markup=False
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(handler)
+    root.setLevel(level)
 
 
 # ── Banner ──────────────────────────────────────────────────────────────────
@@ -175,6 +198,9 @@ async def run_streamed(
                                     _tool_line(name, args, event.part.content, step)
                                     status.start()
             result = run.result
+    except Exception as exc:
+        append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
+        raise
     finally:
         status.stop()
         _active_status = None
@@ -185,7 +211,10 @@ async def run_streamed(
     # like a usage record, else call it.
     u = result.usage
     usage = u if hasattr(u, "input_tokens") else u()
-    inline_stats(usage, time.monotonic() - start, model)
+    elapsed = time.monotonic() - start
+    inline_stats(usage, elapsed, model)
+    total = (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
+    append_run(deps, task, elapsed, total, ok=True)
     return result
 
 

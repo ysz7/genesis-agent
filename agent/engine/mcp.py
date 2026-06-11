@@ -24,9 +24,12 @@ start/stop — the CLI and server already do this via ``async with agent:``.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ..runtime.config import Config
+
+logger = logging.getLogger("agent.mcp")
 
 
 def load_mcp_servers(config: Config) -> list[Any]:
@@ -42,8 +45,8 @@ def load_mcp_servers(config: Config) -> list[Any]:
     try:
         from pydantic_ai.mcp import MCPServerStdio, MCPServerStreamableHTTP
     except Exception:
-        print(
-            "  ! settings.yaml declares mcp servers but the 'mcp' extra isn't "
+        logger.warning(
+            "settings.yaml declares mcp servers but the 'mcp' extra isn't "
             "installed — run: uv sync --extra mcp"
         )
         return []

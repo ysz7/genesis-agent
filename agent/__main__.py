@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -54,6 +55,13 @@ def _force_utf8() -> None:
 def main(argv: list[str] | None = None) -> int:
     _force_utf8()
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+
+    # Logging: CLI paths render the `agent.*` loggers through the rich console;
+    # --serve stays on plain stdlib logging (server code never imports rich).
+    if args.serve:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    else:
+        display.setup_logging()
 
     if args.new:
         from .console import wizard
