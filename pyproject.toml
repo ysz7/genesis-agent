@@ -5,7 +5,7 @@ description = "Lightweight modular vertical-agent template on Pydantic AI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic-ai-slim[openai,anthropic]>=0.0.40",
+    "pydantic-ai-slim[openai,anthropic]>=1.0,<2",
     "rich>=13.7",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
