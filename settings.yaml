@@ -1,9 +1,9 @@
-# ── micro-agent vertical config (non-secret) ─────────────────────────────────
+# ── genesis-agent vertical config (non-secret) ─────────────────────────────────
 # Loaded into deps.settings and available to every tool via ctx.deps.settings.
 # Secrets go in .env, not here.
 
 # Display name for this agent (defaults to the folder name).
-name: micro-agent
+name: genesis-agent
 
 # State store filename inside workspace/. Use *.json (readable) or *.db (SQLite).
 store: state.json

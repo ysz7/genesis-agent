@@ -20,7 +20,7 @@ from rich.panel import Panel
 
 from . import display
 
-CORAL = "#d95767"
+EMERALD = "#10b981"
 console = Console()
 PROVIDERS = ["openai", "anthropic", "openrouter", "ollama"]
 
@@ -70,14 +70,13 @@ def _read_key() -> str | None:
 
 def _render(title: str, subtitle: str, options: list[str], index: int) -> None:
     console.clear()
-    head = f"\n  [bold {CORAL}]micro-agent[/]"
+    console.print(display.LOGO)
     if subtitle:
-        head += f"   [dim]{subtitle}[/]"
-    console.print(head)
+        console.print(f"  [dim]{subtitle}[/]")
     console.print(f"  [dim]{title}[/]\n")
     for i, opt in enumerate(options):
         if i == index:
-            console.print(f"  [{CORAL}]❯[/] [bold {CORAL}]{opt}[/]")
+            console.print(f"  [{EMERALD}]❯[/] [bold {EMERALD}]{opt}[/]")
         else:
             console.print(f"    [dim]{opt}[/]")
     console.print("\n  [dim]↑/↓ move · Enter select · Esc back[/]")
@@ -434,7 +433,7 @@ def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
     console.print(
         Panel(
             f"{lines}\n[dim]· Ctrl+C to stop[/]",
-            border_style=CORAL,
+            border_style=EMERALD,
             title="[dim]scheduler running[/]",
         )
     )
@@ -455,7 +454,7 @@ def _run_job(agent, deps, job: dict) -> None:
     import asyncio
 
     task = job["task"]
-    console.print(f"  [dim]{time.strftime('%H:%M:%S')}[/] [{CORAL}]→[/] {_clip(task, 60)}")
+    console.print(f"  [dim]{time.strftime('%H:%M:%S')}[/] [{EMERALD}]→[/] {_clip(task, 60)}")
     start = time.monotonic()
 
     async def _run():

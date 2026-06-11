@@ -1,4 +1,4 @@
-# ── Scheduling micro-agent ───────────────────────────────────────────────────
+# ── Scheduling genesis-agent ───────────────────────────────────────────────────
 # The agent runs one-shot from a task string, so any external scheduler drives
 # recurring runs. No scheduler is baked into the core. Pick your platform below.
 #
@@ -17,26 +17,26 @@
 
 
 # ── systemd timer (Linux) ────────────────────────────────────────────────────
-# /etc/systemd/system/micro-agent.service
+# /etc/systemd/system/genesis-agent.service
 #
 #   [Unit]
-#   Description=micro-agent one-shot run
+#   Description=genesis-agent one-shot run
 #   [Service]
 #   Type=oneshot
 #   WorkingDirectory=/path/to/agent-folder
 #   ExecStart=/path/to/agent-folder/scripts/run.sh "Run the hourly briefing"
 #
-# /etc/systemd/system/micro-agent.timer
+# /etc/systemd/system/genesis-agent.timer
 #
 #   [Unit]
-#   Description=Run micro-agent hourly
+#   Description=Run genesis-agent hourly
 #   [Timer]
 #   OnCalendar=hourly
 #   Persistent=true
 #   [Install]
 #   WantedBy=timers.target
 #
-# Enable: systemctl enable --now micro-agent.timer
+# Enable: systemctl enable --now genesis-agent.timer
 
 
 # ── Windows Task Scheduler ───────────────────────────────────────────────────
@@ -46,7 +46,7 @@
 #   $action  = New-ScheduledTaskAction -Execute "powershell.exe" `
 #       -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$root\scripts\run.ps1`" `"Run the hourly briefing`""
 #   $trigger = New-ScheduledTaskTrigger -Daily -At 9am
-#   Register-ScheduledTask -TaskName "micro-agent" -Action $action -Trigger $trigger
+#   Register-ScheduledTask -TaskName "genesis-agent" -Action $action -Trigger $trigger
 #
-# Run it now to test:  Start-ScheduledTask -TaskName "micro-agent"
-# Remove it:           Unregister-ScheduledTask -TaskName "micro-agent" -Confirm:$false
+# Run it now to test:  Start-ScheduledTask -TaskName "genesis-agent"
+# Remove it:           Unregister-ScheduledTask -TaskName "genesis-agent" -Confirm:$false

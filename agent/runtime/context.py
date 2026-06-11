@@ -48,7 +48,7 @@ def build_deps(config: Config) -> AgentDeps:
     http = httpx.Client(
         timeout=httpx.Timeout(30.0),
         follow_redirects=True,
-        headers={"User-Agent": f"micro-agent/{config.agent_name}"},
+        headers={"User-Agent": f"genesis-agent/{config.agent_name}"},
     )
     return AgentDeps(
         config=config,

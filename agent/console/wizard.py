@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 from . import display
-from .menu import CORAL, PROVIDERS, _edit_line, console, select
+from .menu import EMERALD, PROVIDERS, _edit_line, console, select
 
 _DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
@@ -47,7 +47,7 @@ def run_wizard(root: str | None = None) -> int:
     src = Path(root or os.getcwd()).resolve()
 
     console.clear()
-    console.print(f"\n  [bold {CORAL}]New agent[/]   [dim]created next to {src.name}/[/]")
+    console.print(f"\n  [bold {EMERALD}]New agent[/]   [dim]created next to {src.name}/[/]")
     console.print("  [dim]Enter to confirm each field · Esc to cancel.[/]\n")
 
     name = _edit_line("  name (folder)= ", "")

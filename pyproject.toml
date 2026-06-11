@@ -1,5 +1,5 @@
 [project]
-name = "micro-agent"
+name = "genesis-agent"
 version = "0.1.0"
 description = "Lightweight modular vertical-agent template on Pydantic AI"
 readme = "README.md"

@@ -1,31 +1,27 @@
 <div align="center">
 
-# 🤖 micro-agent
+<img src="docs/assets/banner.svg" alt="genesis-agent" width="520">
 
 **A lightweight, modular vertical-agent template built on [Pydantic AI](https://ai.pydantic.dev).**
 
 *Copy the folder · edit one file · drop in tools → a specialized agent is ready.*
 
-![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)
-![Pydantic AI](https://img.shields.io/badge/built%20on-Pydantic%20AI-e92063)
-![uv](https://img.shields.io/badge/packaged%20with-uv-de5fe9)
-![Providers](https://img.shields.io/badge/providers-OpenAI%20·%20Anthropic%20·%20OpenRouter%20·%20Ollama-2ea44f)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.10+-064e3b?logo=python&logoColor=white)
+![Pydantic AI](https://img.shields.io/badge/built%20on-Pydantic%20AI-047857)
+![uv](https://img.shields.io/badge/packaged%20with-uv-059669)
+![Providers](https://img.shields.io/badge/providers-OpenAI%20·%20Anthropic%20·%20OpenRouter%20·%20Ollama-10b981)
+![License](https://img.shields.io/badge/license-MIT-34d399)
 
 </div>
 
 ---
 
-micro-agent is a **finished, runnable template** — not a skeleton you complete
-each time. There are exactly two layers, and you only ever touch the second:
-
-- 🧊 **Frozen engine** (`agent/`) — model wiring, tool discovery, the agent loop,
+- **Frozen engine** (`agent/`) — model wiring, tool discovery, the agent loop,
   the console, the HTTP server. Built once, never edited per agent.
-- ✍️ **Per-agent** — `persona.md`, `tools/*.py`, `settings.yaml`, `.env`. That's
-  all you write for a new vertical.
+- **Per-agent** — `persona.md` · `tools/*.py` · `settings.yaml` · `.env`.
+  That's all you write for a new vertical.
 
-A fresh copy is already a working general-purpose agent with five built-in tools —
-**before any customization**.
+A fresh copy is already a working general-purpose agent with five built-in tools.
 
 ```text
   › write hello.txt with "hi" then list the workspace
@@ -35,127 +31,111 @@ A fresh copy is already a working general-purpose agent with five built-in tools
   ↳  1,164 tok (1,084→80)  ·  $0.0003  ·  2.3s
 ```
 
-## ✨ Features
+## Quickstart
 
-- **Stands on Pydantic AI** — provider-agnostic models, native tool calling,
-  retries, and schema-from-type-hints. No hand-rolled LLM transport or JSON schema.
-- **Drop-in tools** — any documented, type-hinted function in `tools/*.py` is
-  auto-discovered and registered. No wiring.
-- **4 providers, switch via `.env`** — OpenAI · Anthropic · OpenRouter · Ollama
-  (offline, no key). One line changes the brain.
-- **Majestic console** — a live reasoning tree (reason → tool → result), a
-  spinner, and a `tokens · cost · elapsed` footer, built on `rich`.
-- **Built-in state store** — `get/set/append/all` over JSON or SQLite for
-  cross-run memory (dedup sets, history, counters).
-- **Structured output** — return a typed Pydantic model instead of prose.
-- **Headless HTTP mode** — `--serve` exposes `POST /task` with zero extra deps.
-- **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
-- **Optional MCP** — plug external [MCP](https://modelcontextprotocol.io) tool
-  servers in from config. Lean by default.
-- **Docker-ready** — slim `uv` image + compose for deployment.
-
-## 🚀 Install
-
-### One-liner — into an empty folder
-
-Make a folder, open a terminal in it, and paste. This **downloads the project,
-installs `uv` + all dependencies, and creates `.env`** — nothing pre-installed
-needed (`uv` is a standalone binary that brings its own Python):
+Open a terminal in an **empty folder** and paste — this downloads the project,
+installs `uv` and all dependencies, and creates `.env`:
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.ps1 | iex
 ```
 
 ```bash
 # Linux / macOS
-curl -LsSf https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.sh | sh
 ```
 
-Then **edit `.env`** (set `PROVIDER` / `MODEL` / `API_KEY`) and launch:
-double-click **`start.cmd`** (Windows) / run **`./start.sh`** (Linux/macOS).
-Every run after that is just `start`.
+Then set `PROVIDER` / `MODEL` / `API_KEY` in `.env` and launch: **`start.cmd`**
+(Windows) / **`./start.sh`** (Linux/macOS).
 
-### Manual (clone first)
+Manual install (clone first):
 
 ```bash
-git clone https://github.com/ysz7/micro-agent.git
-cd micro-agent
+git clone https://github.com/ysz7/genesis-agent.git
+cd genesis-agent
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 ./scripts/install.sh                                           # Linux/macOS
 ```
 
-> 💡 No API key? Use **Ollama**: set `PROVIDER=ollama`, `MODEL=llama3.1:8b`,
-> `BASE_URL=http://localhost:11434/v1` and run fully offline.
+- No API key? Set `PROVIDER=ollama`, `MODEL=llama3.1:8b`,
+  `BASE_URL=http://localhost:11434/v1` — fully offline.
+- Forked the repo? Point the installer at it: edit `$Repo` / `REPO` in
+  `scripts/install.*` or set `GENESIS_REPO=...`.
 
-> ⚙️ Forked it? Point the installer at your own repo by editing `$Repo` / `REPO`
-> at the top of `scripts/install.ps1` / `scripts/install.sh` (or set
-> `MICROAGENT_REPO=...`). It works the same whether run remotely (empty folder →
-> it clones) or locally (inside the repo → it just sets up).
+## Features
 
-## ▶️ Usage
+- **Stands on Pydantic AI** — provider-agnostic models, native tool calling,
+  retries, schema-from-type-hints. No hand-rolled transport or JSON schema.
+- **Drop-in tools** — any documented, type-hinted function in `tools/*.py` is
+  auto-discovered and registered. No wiring.
+- **4 providers, switched via `.env`** — OpenAI · Anthropic · OpenRouter ·
+  Ollama (offline, no key).
+- **Live console** — reasoning tree (reason → tool → result) with a
+  `tokens · cost · elapsed` footer.
+- **State store** — `get/set/append/all` over JSON or SQLite for cross-run
+  memory; **structured output** — return a typed Pydantic model instead of prose.
+- **Headless HTTP mode** (`--serve`, zero extra deps), **optional
+  [MCP](https://modelcontextprotocol.io) servers** from config, **Docker-ready**.
+- **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
 
-**Easiest — the launchers.** Double-click **`start.cmd`** (Windows) or run
-**`./start.sh`** (Linux/macOS) to open an arrow-key **start menu**: Chat ·
-Scheduler (recurring tasks while the agent is open) · Settings (edit provider /
-model / API key in `.env`) · Serve (HTTP with a live request monitor) · Quit. The
-launchers `cd` into the folder, find `uv` (with a clear hint if it's missing), and
-auto-install deps on first run. Pass a task or flags to skip the menu:
+## Usage
+
+**`start.cmd`** / **`./start.sh`** opens an arrow-key start menu: Chat ·
+Scheduler · Settings · Serve · Quit. The launchers find `uv` and auto-install
+deps on first run. Pass a task or flags to skip the menu:
 
 ```bash
 start.cmd "Summarize the README in three bullets"   # one-shot
 start.cmd --serve                                    # HTTP service
 ```
 
-**From a terminal — `uv` directly** (run from inside the agent folder):
+From a terminal, run `uv` **inside the agent folder** — `.env` / `persona.md` /
+`settings.yaml` are loaded from the current directory (use `--root path/to/agent`
+from elsewhere):
 
 ```bash
 uv run agent "Summarize the README in three bullets"   # one-shot
 uv run agent                                            # interactive REPL
+uv run agent --serve --port 8181                        # HTTP service
 ```
 
-> ℹ️ `uv run agent` must run **from inside the agent folder** — `uv` locates the
-> project there, and the agent loads `.env` / `persona.md` / `settings.yaml` from
-> the current directory. (Or pass `--root path/to/agent` from elsewhere.)
-
-Run as an HTTP service:
-
 ```bash
-uv run agent --serve --port 8181
 curl -X POST localhost:8181/task -H "content-type: application/json" \
      -d '{"task": "what files are in the workspace?"}'
 ```
 
-## 🧩 Make a vertical agent
+## Make a vertical agent
 
-Double-click **`scripts/new-agent.cmd`** (Windows) / run **`./scripts/new-agent.sh`**
-(Linux/macOS) — or pick **Create a new agent** in the menu (`uv run agent --new`) —
-to open a **wizard**.
-Enter the name, role, provider, model, and key; it scaffolds a ready-to-run agent
-in a **sibling folder** `../<name>` with a generated `persona.md` / `settings.yaml`
-/ `.env` and a copy of the engine + scripts. The original `agent/` is never touched.
+Run the wizard: **`scripts/new-agent.cmd`** / **`./scripts/new-agent.sh`** (or
+*Create a new agent* in the menu). Enter name, role, provider, model, key — it
+scaffolds a ready-to-run agent in a sibling folder `../<name>` with a generated
+`persona.md` / `settings.yaml` / `.env` and a copy of the engine.
 
-Then refine it: edit **`persona.md`**, drop domain tools into **`tools/`** (one
-documented, type-hinted function per tool; add `ctx: RunContext[AgentDeps]` to
-reach the http client / store / settings), and run **`start.cmd`** / `./start.sh`.
+Then refine it:
 
-See [`examples/rss_research/`](examples/rss_research/) for a fully filled-in
-vertical (drop-in tool · settings-driven feeds · store-based dedup · structured output).
+1. Edit **`persona.md`** — the system prompt.
+2. Drop domain tools into **`tools/`** — one documented, type-hinted function
+   per tool; take `ctx: RunContext[AgentDeps]` as the first parameter to reach
+   the http client / store / settings.
+3. Run **`start.cmd`** / `./start.sh`.
 
-## 🔌 Providers
+A fully filled-in vertical lives in
+[`examples/rss_research/`](examples/rss_research/) — drop-in tool,
+settings-driven feeds, store-based dedup, structured output.
 
-| `PROVIDER`   | `MODEL` example                | Key | Notes |
-|--------------|--------------------------------|-----|-------|
-| `openai`     | `gpt-4o-mini`                  | ✅  | |
-| `anthropic`  | `claude-haiku-4-5`             | ✅  | |
-| `openrouter` | `openai/gpt-oss-120b:free`     | ✅  | `BASE_URL` auto-set |
-| `ollama`     | `llama3.1:8b`                  | ❌  | offline, OpenAI-compat path |
+## Providers
 
-Adding a provider is just editing `.env` — no code changes.
+| `PROVIDER`   | `MODEL` example                | API key | Notes |
+|--------------|--------------------------------|---------|-------|
+| `openai`     | `gpt-4o-mini`                  | ✓       | |
+| `anthropic`  | `claude-haiku-4-5`             | ✓       | |
+| `openrouter` | `openai/gpt-oss-120b:free`     | ✓       | `BASE_URL` auto-set |
+| `ollama`     | `llama3.1:8b`                  | ✗       | offline, no key needed |
 
-## 🛠️ MCP servers (optional)
+Switching is a `.env` edit — no code changes.
 
-Plug external MCP tool servers in without writing code:
+## MCP servers (optional)
 
 ```bash
 uv sync --extra mcp
@@ -171,33 +151,27 @@ mcp:
     url: https://example.com/mcp                  # remote server
 ```
 
-Their tools appear to the agent like built-ins (prefixed with `name`). A working
-demo lives in [`examples/mcp_demo/`](examples/mcp_demo/). With no `mcp:` block the
-agent runs exactly as before.
+Their tools appear to the agent like built-ins (prefixed with `name`). Demo:
+[`examples/mcp_demo/`](examples/mcp_demo/). Without an `mcp:` block nothing changes.
 
-## 🐳 Docker
+## Docker
 
 ```bash
 cp .env.example .env
 docker compose up --build      # serves POST /task on :8181
 ```
 
-`workspace/` is mounted as a volume so state persists. One-shot run:
-`docker run --rm --env-file .env micro-agent uv run agent "your task"`.
+`workspace/` is mounted as a volume, so state persists. One-shot:
+`docker run --rm --env-file .env genesis-agent uv run agent "your task"`.
 
-## ⏰ Scheduling
+## Scheduling
 
-Two ways, for two needs:
+**In-app** — the *Scheduler* menu item runs recurring tasks in a live feed.
+Jobs persist in the state store but fire only while the scheduler is open.
 
-**In-app (while the agent is open)** — the **Scheduler** menu item. Add recurring
-tasks (e.g. "summarize new feeds" every 5 minutes), hit *Run scheduler (live)*,
-and watch them fire in a live feed; Ctrl+C stops. Jobs are saved in the state
-store, so they're remembered — but they only run while the scheduler is open.
-
-**External (even when closed)** — the agent runs one-shot from a task string, so
-cron / systemd / Task Scheduler drives runs that fire 24/7 without a terminal. Use
-`scripts/run.sh` / `scripts/run.ps1` (not `start.cmd`, which ends with `pause`).
-See [`schedule.example`](schedule.example) for templates.
+**External (24/7)** — drive one-shot runs with cron / systemd / Task Scheduler
+via `scripts/run.sh` / `scripts/run.ps1` (not `start.cmd` — it ends with
+`pause`). Templates: [`schedule.example`](schedule.example).
 
 ```bash
 # cron — every hour
@@ -210,14 +184,14 @@ $root    = "C:\path\to\agent"
 $action  = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$root\scripts\run.ps1`" `"Run the hourly briefing`""
 $trigger = New-ScheduledTaskTrigger -Daily -At 9am
-Register-ScheduledTask -TaskName "micro-agent" -Action $action -Trigger $trigger
+Register-ScheduledTask -TaskName "genesis-agent" -Action $action -Trigger $trigger
 ```
 
-## 📁 Project structure
+## Project structure
 
 ```
-micro-agent/
-├── agent/                  🧊 the frozen engine (never edited per vertical)
+genesis-agent/
+├── agent/                  the frozen engine (never edited per vertical)
 │   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve
 │   ├── __init__.py         public API: `from agent import AgentDeps, parse_rss`
 │   ├── runtime/            config · context (AgentDeps) · store (JSON|SQLite)
@@ -225,16 +199,16 @@ micro-agent/
 │   ├── tools/              builtins (5 tools) · toolkit (http/cache/rss helpers)
 │   ├── console/            display (rich tree · spinner · stats) · menu
 │   └── server/             stdlib HTTP POST /task + live monitor
-├── persona.md              ✍️ the vertical's system prompt
-├── settings.yaml           ✍️ non-secret config (feeds, symbols, thresholds, mcp)
-├── .env                    ✍️ secrets (provider, model, key)
-├── tools/                  ✍️ drop-in custom tools (auto-discovered)
+├── persona.md              the vertical's system prompt          ← yours
+├── settings.yaml           non-secret config (feeds, mcp, …)     ← yours
+├── .env                    secrets (provider, model, key)        ← yours
+├── tools/                  drop-in custom tools (auto-discovered) ← yours
 ├── examples/               filled-in verticals to copy from
-├── scripts/                install · run · fleet · new-agent helpers (ps1/sh/cmd)
+├── scripts/                install · run · fleet · new-agent helpers
 ├── start.cmd / start.sh    double-click launchers (start menu)
 └── Dockerfile · docker-compose.yml
 ```
 
-## 📜 License
+## License
 
 MIT — see [LICENSE](LICENSE).

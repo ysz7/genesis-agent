@@ -131,7 +131,7 @@ def serve(config: Config, port: int = 8181, monitor=None) -> int:
     if monitor:
         monitor.on_start()
     else:
-        print(f"micro-agent '{config.agent_name}' serving on http://0.0.0.0:{port}  (POST /task)")
+        print(f"genesis-agent '{config.agent_name}' serving on http://0.0.0.0:{port}  (POST /task)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

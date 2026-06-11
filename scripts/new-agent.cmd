@@ -4,7 +4,7 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0.."
 set PYTHONUTF8=1
-title micro-agent - new agent
+title genesis-agent - new agent
 
 set "UV=uv"
 where uv >nul 2>nul

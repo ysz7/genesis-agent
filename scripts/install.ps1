@@ -1,12 +1,12 @@
-# micro-agent setup / bootstrap (Windows).
+# genesis-agent setup / bootstrap (Windows).
 #
 #   Bootstrap into an empty folder (downloads the repo, then sets it up):
-#     irm https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.ps1 | iex
+#     irm https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.ps1 | iex
 #
 #   Local (already inside the cloned repo):
 #     powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 #
-# Set the repo below (or override with $env:MICROAGENT_REPO).
+# Set the repo below (or override with $env:GENESIS_REPO).
 #
 # Note: we deliberately do NOT set $ErrorActionPreference = "Stop" — git and uv
 # write normal progress to stderr, which "Stop" would treat as a fatal error.
@@ -20,11 +20,11 @@ function Assert-Ok($what) {
     }
 }
 
-if ($env:MICROAGENT_REPO) { $Repo = $env:MICROAGENT_REPO }
-else { $Repo = "https://github.com/ysz7/micro-agent" }
+if ($env:GENESIS_REPO) { $Repo = $env:GENESIS_REPO }
+else { $Repo = "https://github.com/ysz7/genesis-agent" }
 
 Write-Host ""
-Write-Host "=== micro-agent setup ==="
+Write-Host "=== genesis-agent setup ==="
 
 # --- Locate or download the project -----------------------------------------
 $root = $null
@@ -43,7 +43,7 @@ if (-not $root) {
         Assert-Ok "git clone"
     }
     else {
-        $zip = Join-Path $env:TEMP "micro-agent.zip"
+        $zip = Join-Path $env:TEMP "genesis-agent.zip"
         Invoke-WebRequest "$Repo/archive/refs/heads/main.zip" -OutFile $zip -ErrorAction Stop
         Expand-Archive $zip -DestinationPath ".\_dl" -Force -ErrorAction Stop
         $inner = Get-ChildItem ".\_dl" -Directory | Select-Object -First 1

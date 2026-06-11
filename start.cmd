@@ -5,7 +5,7 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
 set PYTHONUTF8=1
-title micro-agent
+title genesis-agent
 
 REM Find a uv launcher: prefer `uv` on PATH, else `python -m uv`.
 set "UV=uv"

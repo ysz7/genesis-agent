@@ -23,7 +23,7 @@ from ..tools.builtins import BUILTIN_TOOLS
 
 def _load_module_functions(py_file: Path) -> list[Callable]:
     """Import *py_file* in isolation and return its tool-like functions."""
-    mod_name = f"_microagent_tools_{py_file.stem}"
+    mod_name = f"_genesisagent_tools_{py_file.stem}"
     spec = importlib.util.spec_from_file_location(mod_name, py_file)
     if spec is None or spec.loader is None:
         return []

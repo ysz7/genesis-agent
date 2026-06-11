@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="92" viewBox="0 0 520 92">
+  <style>
+    text {
+      font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", Menlo, monospace;
+      font-size: 20px;
+      font-weight: bold;
+      fill: #10b981;
+      white-space: pre;
+    }
+  </style>
+  <text x="260" y="24" text-anchor="middle" textLength="490" lengthAdjust="spacingAndGlyphs" xml:space="preserve">╔═╗╔═╗╔╗╔╔═╗╔═╗╦╔═╗   ╔═╗╔═╗╔═╗╔╗╔╔╦╗</text>
+  <text x="260" y="50" text-anchor="middle" textLength="490" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║ ╦║╣ ║║║║╣ ╚═╗║╚═╗───╠═╣║ ╦║╣ ║║║ ║ </text>
+  <text x="260" y="76" text-anchor="middle" textLength="490" lengthAdjust="spacingAndGlyphs" xml:space="preserve">╚═╝╚═╝╝╚╝╚═╝╚═╝╩╚═╝   ╩ ╩╚═╝╚═╝╝╚╝ ╩ </text>
+</svg>

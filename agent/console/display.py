@@ -35,22 +35,22 @@ from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from ..engine.registry import tool_names
 
-CORAL = "#d95767"
+EMERALD = "#10b981"
 console = Console()
 
 
 # ── Banner ──────────────────────────────────────────────────────────────────
 
-_LOGO = r"""[bold {c}]
-  ╔╦╗╦╔═╗╦═╗╔═╗   ╔═╗╔═╗╔═╗╔╗╔╔╦╗
-  ║║║║║  ╠╦╝║ ║───╠═╣║ ╦║╣ ║║║ ║
-  ╩ ╩╩╚═╝╩╚═╚═╝   ╩ ╩╚═╝╚═╝╝╚╝ ╩
-[/]""".format(c=CORAL)
+LOGO = r"""[bold {c}]
+  ╔═╗╔═╗╔╗╔╔═╗╔═╗╦╔═╗   ╔═╗╔═╗╔═╗╔╗╔╔╦╗
+  ║ ╦║╣ ║║║║╣ ╚═╗║╚═╗───╠═╣║ ╦║╣ ║║║ ║
+  ╚═╝╚═╝╝╚╝╚═╝╚═╝╩╚═╝   ╩ ╩╚═╝╚═╝╝╚╝ ╩
+[/]""".format(c=EMERALD)
 
 
 def print_banner(config: Config, tools: list) -> None:
     """Two-panel startup banner: identity + capabilities."""
-    console.print(_LOGO)
+    console.print(LOGO)
 
     api_ok = bool(config.api_key) or config.provider == "ollama"
     dot = "[green]●[/]" if api_ok else "[red]●[/]"
@@ -59,7 +59,7 @@ def print_banner(config: Config, tools: list) -> None:
     left.add_column(style="dim", justify="right")
     left.add_column()
     left.add_row("agent", f"[bold]{config.agent_name}[/]")
-    left.add_row("provider", f"[{CORAL}]{config.provider}[/]")
+    left.add_row("provider", f"[{EMERALD}]{config.provider}[/]")
     left.add_row("model", config.model)
     left.add_row("api", f"{dot} {'ok' if api_ok else 'missing key'}")
     left.add_row("workspace", f"[dim]{_short(config.workspace)}[/]")
@@ -78,7 +78,7 @@ def print_banner(config: Config, tools: list) -> None:
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
     grid.add_row(
-        Panel(left, title="[dim]identity[/]", border_style=CORAL),
+        Panel(left, title="[dim]identity[/]", border_style=EMERALD),
         Panel(right, title="[dim]capabilities[/]", border_style="dim"),
     )
     console.print(grid)
@@ -106,7 +106,7 @@ async def run_streamed(
     step = {"n": 0}
     pending: dict[str, tuple[str, Any]] = {}
 
-    status = console.status(f"[{CORAL}]Thinking…", spinner="dots")
+    status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
     status.start()
     try:
         # Entering the agent context starts any MCP servers (no-op without them).
@@ -135,7 +135,7 @@ async def run_streamed(
                                 if isinstance(event, FunctionToolCallEvent):
                                     name = event.part.tool_name
                                     pending[event.part.tool_call_id] = (name, event.part.args)
-                                    status.update(f"[{CORAL}]{name}…")
+                                    status.update(f"[{EMERALD}]{name}…")
                                 elif isinstance(event, FunctionToolResultEvent):
                                     name, args = pending.pop(
                                         event.part.tool_call_id,
@@ -168,14 +168,14 @@ def _reason(text: str, step: dict) -> None:
     first = text.strip().split("\n", 1)[0].strip()
     if len(first) > 88:
         first = first[:87] + "…"
-    console.print(f"  [{CORAL}]{_prefix(step)}[/] [bold]REASON[/]  [dim]{_esc(first)}[/]")
+    console.print(f"  [{EMERALD}]{_prefix(step)}[/] [bold]REASON[/]  [dim]{_esc(first)}[/]")
 
 
 def _tool_line(name: str, args: Any, result: Any, step: dict) -> None:
     detail = "  ·  ".join(
         p for p in (_args_summary(name, args), _result_summary(result)) if p
     )
-    line = f"  [{CORAL}]{_prefix(step)}[/] [bold]{name}[/]"
+    line = f"  [{EMERALD}]{_prefix(step)}[/] [bold]{name}[/]"
     if detail:
         line += f"  [dim]·[/]  [dim]{_esc(detail)}[/]"
     console.print(line)
@@ -325,7 +325,7 @@ class ServerMonitor:
                 f"[dim]health   http://localhost:{self.port}/health[/]\n"
                 f"[dim]curl     curl -X POST localhost:{self.port}/task "
                 f"-d '{{\"task\":\"hi\"}}'[/]",
-                border_style=CORAL,
+                border_style=EMERALD,
                 title="[dim]server monitor[/]",
             )
         )
@@ -334,7 +334,7 @@ class ServerMonitor:
         with self._lock:
             self.requests += 1
         ts = time.strftime("%H:%M:%S")
-        line = f"  [dim]{ts}[/] [{CORAL}]→[/] {_esc(_trunc(task, 60))}"
+        line = f"  [dim]{ts}[/] [{EMERALD}]→[/] {_esc(_trunc(task, 60))}"
         if client:
             line += f"  [dim]({client})[/]"
         console.print(line)

@@ -1,4 +1,4 @@
-"""micro-agent — public API surface for tool authors.
+"""genesis-agent — public API surface for tool authors.
 
 Tools you drop in ``tools/*.py`` reach shared deps via ``RunContext[AgentDeps]``::
 

@@ -25,7 +25,7 @@ from .engine.registry import discover_tools
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="agent", description="micro-agent — a modular Pydantic AI agent"
+        prog="agent", description="genesis-agent — a modular Pydantic AI agent"
     )
     parser.add_argument("task", nargs="*", help="task to run (omit for REPL)")
     parser.add_argument("--menu", action="store_true", help="show the interactive start menu")

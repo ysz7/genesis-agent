@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# micro-agent setup / bootstrap (Linux/macOS).
+# genesis-agent setup / bootstrap (Linux/macOS).
 #
 #   Bootstrap into an empty folder (downloads the repo, then sets it up):
-#     curl -LsSf https://raw.githubusercontent.com/ysz7/micro-agent/main/scripts/install.sh | sh
+#     curl -LsSf https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.sh | sh
 #
 #   Local (already inside the cloned repo):
 #     ./scripts/install.sh
 #
-# Set the repo below (or override with MICROAGENT_REPO=...).
+# Set the repo below (or override with GENESIS_REPO=...).
 set -euo pipefail
 
-REPO="${MICROAGENT_REPO:-https://github.com/ysz7/micro-agent}"
+REPO="${GENESIS_REPO:-https://github.com/ysz7/genesis-agent}"
 
 echo
-echo "=== micro-agent setup ==="
+echo "=== genesis-agent setup ==="
 
 # --- Locate or download the project -----------------------------------------
 root=""

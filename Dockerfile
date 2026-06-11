@@ -1,6 +1,6 @@
-# Lean container image for running a micro-agent (defaults to --serve).
-# Build:  docker build -t micro-agent .
-# Run:    docker run --rm -p 8181:8181 --env-file .env micro-agent
+# Lean container image for running a genesis-agent (defaults to --serve).
+# Build:  docker build -t genesis-agent .
+# Run:    docker run --rm -p 8181:8181 --env-file .env genesis-agent
 FROM python:3.12-slim
 
 # uv binary from the official image — no pip bootstrap needed.
@@ -21,5 +21,5 @@ RUN uv sync --frozen --no-dev
 
 EXPOSE 8181
 # Headless HTTP service. Override for a one-shot task, e.g.:
-#   docker run --rm --env-file .env micro-agent uv run agent "your task"
+#   docker run --rm --env-file .env genesis-agent uv run agent "your task"
 CMD ["uv", "run", "agent", "--serve", "--port", "8181"]

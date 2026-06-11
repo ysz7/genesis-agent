@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet.sh — manage many micro-agents living under a directory.
+# fleet.sh — manage many genesis-agents living under a directory.
 # Each agent is a folder containing a persona.md. No shared registry.
 #
 #   ./scripts/fleet.sh list             # list agent folders
