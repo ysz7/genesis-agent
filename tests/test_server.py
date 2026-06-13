@@ -6,7 +6,7 @@ monkeypatching ``factory.build_model``. All offline — no network, no real mode
 
 import asyncio
 import socket
-import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -53,8 +53,19 @@ def test_happy_path_post(monkeypatch, tmp_path):
 
 
 def test_concurrent_requests_share_one_loop(monkeypatch, tmp_path):
+    # Measure actual overlap rather than wall time (robust under CPU load): each
+    # call records the peak number of simultaneously-active runs. On the shared
+    # loop both runs reach the sleep before either finishes → peak 2.
+    active = {"n": 0, "max": 0}
+    lock = threading.Lock()
+
     async def slow(messages, info: AgentInfo) -> ModelResponse:
-        await asyncio.sleep(0.5)
+        with lock:
+            active["n"] += 1
+            active["max"] = max(active["max"], active["n"])
+        await asyncio.sleep(0.3)
+        with lock:
+            active["n"] -= 1
         return ModelResponse(parts=[TextPart(content="done")])
 
     httpd, deps, base = _serve(monkeypatch, tmp_path, FunctionModel(slow))
@@ -62,14 +73,11 @@ def test_concurrent_requests_share_one_loop(monkeypatch, tmp_path):
         def hit(_):
             return httpx.post(f"{base}/task", json={"task": "go"}, timeout=10).status_code
 
-        start = time.monotonic()
         with ThreadPoolExecutor(max_workers=2) as pool:
             codes = list(pool.map(hit, range(2)))
-        elapsed = time.monotonic() - start
 
         assert codes == [200, 200]
-        # Two 0.5s tasks run concurrently on the shared loop → ~0.5s, not ~1.0s.
-        assert elapsed < 0.9, f"requests serialized ({elapsed:.2f}s)"
+        assert active["max"] == 2, "requests did not run concurrently on the loop"
     finally:
         stop_background(httpd, deps)
 

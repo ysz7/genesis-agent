@@ -17,6 +17,8 @@ dependencies = [
 mcp = ["mcp>=1.0"]
 # Opt-in: Logfire tracing (set LOGFIRE_TOKEN in .env). Install with:  uv sync --extra obs
 obs = ["logfire>=3.0"]
+# Opt-in: eval harness for your vertical. Install with:  uv sync --extra evals
+evals = ["pydantic-evals>=1.0"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
