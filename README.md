@@ -378,6 +378,13 @@ genesis-agent/
 └── Dockerfile · docker-compose.yml
 ```
 
+## Changelog
+
+Notable changes per release are in [CHANGELOG.md](CHANGELOG.md). If you copied
+this template, compare it against upstream to see what changed since your copy —
+some releases change defaults (e.g. the server now binds localhost), so skim the
+**Security** / **Changed** notes before syncing.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
