@@ -25,6 +25,10 @@ If `write_skill` / `write_tool` / `remember` are available:
   Python function under `workspace/tools/`; it runs only after it passes
   validation AND a human approves it. Give it a docstring and type hints, and
   name the function exactly as the tool.
+- **Improve what you've made.** To refine an existing skill or tool, read it
+  (`read_skill` / `read_tool`), revise, and save under the SAME name —
+  `write_skill`/`write_tool` overwrite. A changed tool re-runs validation and
+  asks for approval again (because its code changed).
 - **Record lessons** with `remember(lesson)` after a task — a digest is shown to
   you next session.
 

@@ -310,6 +310,10 @@ self_improvement:
   session. Headless `--serve` has no human, so activation is denied unless
   `approvals.headless_allow_granted` honors a prior grant.
 
+To **improve** an existing skill or tool, the agent reads it (`read_skill` /
+`read_tool`), revises, and saves under the same name — `write_skill` /
+`write_tool` overwrite, and a changed tool re-runs validation and approval.
+
 The human approval — not the validation — is the security boundary; generated
 files carry a provenance header (when, prompting task, model) for auditability.
 

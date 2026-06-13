@@ -142,10 +142,24 @@ def test_generated_tool_reprompts_on_code_change(tmp_path):
 
 # ── 11b: registry integration + timeout wrapper ───────────────────────────────
 
+def test_read_tool_round_trips_without_provenance(tmp_path):
+    ctx, deps, config = _deps(tmp_path, approval="always")
+    try:
+        si.write_tool(ctx, "greet", GOOD_TOOL, "greet people")
+        out = si.read_tool(ctx, "greet")
+        # The header is stripped, and the code comes back verbatim — so it can
+        # be revised and passed straight back to write_tool.
+        assert not out.startswith("#")
+        assert out == GOOD_TOOL
+        assert si.read_tool(ctx, "missing").startswith("Error: no tool")
+    finally:
+        close_deps(deps)
+
+
 def test_self_improve_tools_registered_only_when_enabled(tmp_path):
     (tmp_path / "settings.yaml").write_text(_SI, encoding="utf-8")
     names = tool_names(discover_tools(load_config(tmp_path)))
-    for t in ("write_skill", "read_skill", "remember", "write_tool"):
+    for t in ("write_skill", "read_skill", "remember", "write_tool", "read_tool"):
         assert t in names
 
     other = tmp_path / "off"

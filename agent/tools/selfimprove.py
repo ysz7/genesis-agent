@@ -128,15 +128,35 @@ def _scan_banned(tree: ast.AST, settings: dict) -> str | None:
     return None
 
 
+_PROVENANCE_MARK = "# --- genesis-agent: agent-authored tool ---"
+
+
 def _provenance(description: str, model: str) -> str:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return (
-        "# --- genesis-agent: agent-authored tool ---\n"
+        f"{_PROVENANCE_MARK}\n"
         f"# created: {now}\n"
         f"# task: {description.strip() or '(unspecified)'}\n"
         f"# model: {model}\n"
         "# Auto-generated; runs only after human approval. Edit at your own risk.\n\n"
     )
+
+
+def _strip_provenance(text: str) -> str:
+    """Return generated source without its provenance header.
+
+    Lets ``read_tool`` hand back just the code, so a revision can go straight to
+    ``write_tool`` (which prepends a fresh header) without stacking headers.
+    """
+    if not text.startswith(_PROVENANCE_MARK):
+        return text
+    lines = text.splitlines(keepends=True)
+    i = 0
+    while i < len(lines) and lines[i].strip():   # skip the header comment lines
+        i += 1
+    if i < len(lines) and not lines[i].strip():  # and the blank separator
+        i += 1
+    return "".join(lines[i:])
 
 
 def write_tool(ctx: RunContext[AgentDeps], name: str, code: str, description: str) -> str:
@@ -202,8 +222,27 @@ def write_tool(ctx: RunContext[AgentDeps], name: str, code: str, description: st
     )
 
 
+def read_tool(ctx: RunContext[AgentDeps], name: str) -> str:
+    """Read back the source of a tool you previously wrote, so you can improve it.
+
+    Returns the code without its provenance header — revise it and pass it
+    straight to write_tool with the same name. (Changing the code re-triggers
+    validation and a fresh approval, since the content hash changes.)
+
+    Args:
+        name: The tool's identifier (as given to write_tool).
+    """
+    stem = _safe_stem(name)
+    if stem is None:
+        return f"Error: invalid tool name {name!r}."
+    path = ctx.deps.gen_tools_dir / f"{stem}.py"
+    if not path.exists():
+        return f"Error: no tool named '{stem}'."
+    return _strip_provenance(path.read_text(encoding="utf-8"))
+
+
 #: Registered when ``self_improvement.enabled`` is true.
-SELF_IMPROVE_TOOLS = [write_skill, read_skill, remember, write_tool]
+SELF_IMPROVE_TOOLS = [write_skill, read_skill, remember, write_tool, read_tool]
 
 
 # ── System-prompt context (skills index + memory digest) ─────────────────────
