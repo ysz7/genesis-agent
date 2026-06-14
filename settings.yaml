@@ -117,6 +117,14 @@ retries: 2
 #   long research endpoints : 600+
 # serve_timeout: 300
 
+# ── Multimodal input (optional) ──────────────────────────────────────────────────
+# Attach images/PDFs to a run: one-shot `--image PATH_OR_URL`, drag a file into
+# the REPL, or POST `{"task": ..., "images": ["https://..."]}` (server = URLs
+# only). Needs a vision-capable model; non-vision models degrade with a clear
+# message. max_mb caps a single attachment's size (default 10).
+# attachments:
+#   max_mb: 10
+
 # ── Planning (optional) ─────────────────────────────────────────────────────────
 # Gives the agent `update_plan` — a short todo checklist it keeps up to date on
 # multi-step tasks. The current plan is shown to the model each turn and rendered

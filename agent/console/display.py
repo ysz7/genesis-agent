@@ -27,6 +27,7 @@ from rich.text import Text
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from ..runtime.runlog import append_run
+from ..runtime.attachments import prompt_text
 from ..engine.registry import tool_names
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 
@@ -144,6 +145,7 @@ async def run_streamed(
     start = time.monotonic()
     step = {"n": 0}
     result = None
+    task_text = prompt_text(task)  # text form for the run log (not image bytes)
     deps.extra.pop("plan", None)  # the todo scratchpad is per-task (Phase 13)
 
     status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
@@ -171,7 +173,7 @@ async def run_streamed(
                 elif isinstance(ev, Done):
                     result = ev.result
     except Exception as exc:
-        append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
+        append_run(deps, task_text, time.monotonic() - start, 0, ok=False, error=str(exc))
         raise
     finally:
         status.stop()
@@ -186,7 +188,7 @@ async def run_streamed(
     elapsed = time.monotonic() - start
     inline_stats(usage, elapsed, model)
     total = (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
-    append_run(deps, task, elapsed, total, ok=True)
+    append_run(deps, task_text, elapsed, total, ok=True)
     return result
 
 

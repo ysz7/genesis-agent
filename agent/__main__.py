@@ -16,12 +16,16 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 from pydantic_ai.exceptions import UsageLimitExceeded
 
 from .console import display
 from .runtime.config import load_config
 from .runtime.context import build_deps, close_deps
+from .runtime.attachments import (
+    build_user_prompt, extract_attachments, max_mb_from, vision_hint,
+)
 from .engine.factory import build_agent
 from .engine.registry import discover_tools
 
@@ -40,6 +44,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="bind address for --serve (default localhost; use 0.0.0.0 in containers)",
     )
     parser.add_argument("--root", default=None, help="agent folder (default: cwd)")
+    parser.add_argument(
+        "--image", action="append", default=None, metavar="PATH_OR_URL",
+        help="attach an image/PDF (path or URL); repeatable. One-shot only — "
+             "in the REPL just drag a file into the terminal.",
+    )
     return parser.parse_args(argv)
 
 
@@ -85,13 +94,17 @@ def main(argv: list[str] | None = None) -> int:
     deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
         if args.task:
-            return _one_shot(agent, " ".join(args.task), deps, config.model)
+            prompt = build_user_prompt(
+                " ".join(args.task), args.image or [], allow_local=True,
+                max_mb=max_mb_from(config.settings),
+            )
+            return _one_shot(agent, prompt, deps, config.model)
         return _repl(agent, config, deps)
     finally:
         close_deps(deps)
 
 
-def _one_shot(agent, task: str, deps, model: str) -> int:
+def _one_shot(agent, task, deps, model: str) -> int:
     try:
         result = asyncio.run(display.run_streamed(agent, task, deps, model))
     except KeyboardInterrupt:
@@ -100,6 +113,9 @@ def _one_shot(agent, task: str, deps, model: str) -> int:
     except UsageLimitExceeded as exc:
         display.warn(f"usage limit reached — {exc}")
         return 0
+    except Exception as exc:  # noqa: BLE001 - a model/provider failure, not a crash
+        display.err(f"model error: {exc}{vision_hint(exc)}")
+        return 1
     display.answer(result.output)
     return 0
 
@@ -140,9 +156,19 @@ def _repl(agent, config, deps) -> int:
                 display.ok("tools reloaded")
             display.info("tools: " + ", ".join(tool_names(tools)))
             continue
+        # Drag a file into the terminal → it arrives as a path; attach it.
+        clean, attached = extract_attachments(task)
+        if attached:
+            display.info("📎 attached: " + ", ".join(Path(a).name for a in attached))
+            prompt = build_user_prompt(
+                clean or "(see attached)", attached, allow_local=True,
+                max_mb=max_mb_from(config.settings),
+            )
+        else:
+            prompt = task
         try:
             result = asyncio.run(
-                display.run_streamed(agent, task, deps, config.model, message_history=history)
+                display.run_streamed(agent, prompt, deps, config.model, message_history=history)
             )
             display.answer(result.output)
             history.extend(result.new_messages())
@@ -159,7 +185,7 @@ def _repl(agent, config, deps) -> int:
         except UsageLimitExceeded as exc:
             display.warn(f"usage limit reached — {exc}")
         except Exception as exc:  # noqa: BLE001 - keep the REPL alive
-            display.err(str(exc))
+            display.err(f"{exc}{vision_hint(exc)}")
     return 0
 
 

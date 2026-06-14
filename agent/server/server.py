@@ -40,6 +40,7 @@ from urllib.parse import parse_qs, urlparse
 from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
 from ..runtime.runlog import append_run
+from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 
@@ -170,7 +171,13 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             except (json.JSONDecodeError, KeyError):
                 self._send(400, {"error": "expected JSON body with a 'task' field"})
                 return
-            self._handle_task(task)
+            # Optional multimodal input — URLs only (a remote local path would be
+            # an arbitrary-file-read hole).
+            prompt = build_user_prompt(
+                task, data.get("images") or [], allow_local=False,
+                max_mb=max_mb_from(config.settings),
+            )
+            self._handle_task(prompt)
 
         def _read_body(self) -> bytes | None:
             """Read the request body, enforcing the size limit. None on error sent."""
@@ -188,12 +195,13 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 return None
             return self.rfile.read(length) if length else b"{}"
 
-        def _handle_task(self, task: str) -> None:
+        def _handle_task(self, task) -> None:
             self._detailed = True            # use the detailed monitor feed
             deps.extra.pop("plan", None)     # per-request todo scratchpad (Phase 13)
+            task_text = prompt_text(task)    # text form for monitor/log (not bytes)
             start = time.monotonic()
             if monitor:
-                monitor.on_request(task, self.client_address[0])
+                monitor.on_request(task_text, self.client_address[0])
             # Run the agent and send the response as SEPARATE steps: a failure to
             # deliver (client closed the tab) must not mislabel a task that ran
             # fine, nor trigger a second send onto a dead socket.
@@ -203,20 +211,20 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 elapsed = time.monotonic() - start
                 if monitor:
                     monitor.on_result(False, 0, elapsed)
-                append_run(deps, task, elapsed, 0, ok=False, error="timeout")
+                append_run(deps, task_text, elapsed, 0, ok=False, error="timeout")
                 self._send(504, {"error": f"task exceeded {serve_timeout:.0f}s timeout"})
                 return
             except Exception as exc:  # noqa: BLE001 - the task itself failed
                 elapsed = time.monotonic() - start
                 if monitor:
                     monitor.on_result(False, 0, elapsed)
-                append_run(deps, task, elapsed, 0, ok=False, error=str(exc))
-                self._send(500, {"error": str(exc)})
+                append_run(deps, task_text, elapsed, 0, ok=False, error=str(exc))
+                self._send(500, {"error": f"{exc}{vision_hint(exc)}"})
                 return
             elapsed = time.monotonic() - start
             if monitor:
                 monitor.on_result(True, _tokens(result), elapsed)
-            append_run(deps, task, elapsed, _tokens(result), ok=True)
+            append_run(deps, task_text, elapsed, _tokens(result), ok=True)
             self._send(200, {"output": _jsonable(result.output)})
 
         def _handle_stream(self, task: str) -> None:

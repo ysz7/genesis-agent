@@ -144,6 +144,11 @@ curl -N "localhost:8181/task/stream?q=list+the+files+here"
 Endpoints: `POST /task` · `GET /task?q=...` (browser-friendly) ·
 `GET /task/stream?q=...` (SSE) · `GET /health` (open, no auth).
 
+**Multimodal input** (vision-capable models): attach images/PDFs with
+`uv run agent "what's this?" --image photo.png`, by dragging a file into the
+REPL, or via `POST /task` with `{"task": ..., "images": ["https://..."]}` (the
+server accepts URLs only). A non-vision model degrades with a clear message.
+
 ## Make a vertical agent
 
 Run the wizard: **`scripts/new-agent.cmd`** / **`./scripts/new-agent.sh`** (or
@@ -194,6 +199,7 @@ files with the same notes — this is just the consolidated reference.
 | `tools` | — | `disable: [...]` (never registered) · `confirm: [...]` (human y/N) |
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
+| `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
 | `mcp` | — | external [MCP](#mcp-servers-optional) servers |
 
 The tool policy is the key safety lever: `fetch_url` content is
