@@ -52,17 +52,24 @@ def _setup_observability() -> None:
     logger.info("logfire tracing enabled")
 
 
-def build_agent(config: Config, output_type: Any | None = None) -> Agent:
+def build_agent(
+    config: Config,
+    output_type: Any | None = None,
+    *,
+    exclude_tools: set[str] | None = None,
+) -> Agent:
     """Compose ``Agent(model, system_prompt, deps_type, output_type, tools)``.
 
     Args:
         config: A loaded :class:`Config`.
         output_type: Optional Pydantic model for structured output. When ``None``
             the agent returns plain text.
+        exclude_tools: Tool names to leave out of this build — used to construct
+            a restricted sub-agent (Phase 14 delegation).
     """
     _setup_observability()
     model = build_model(config)
-    tools = discover_tools(config)
+    tools = discover_tools(config, exclude=exclude_tools)
 
     kwargs: dict[str, Any] = {
         "system_prompt": config.persona,

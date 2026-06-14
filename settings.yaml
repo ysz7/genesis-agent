@@ -126,6 +126,17 @@ retries: 2
 # planning:
 #   enabled: true
 
+# ── Subagents / delegation (optional) ────────────────────────────────────────────
+# Gives the agent `delegate(task)` — run a fresh sub-agent on an isolated subtask
+# (clean context) and get back just its answer. Good for focused lookups or
+# splitting a big job. Sub-agents share state (store/workspace) but not history,
+# never get `write_tool`, and their token cost folds into the parent's budget.
+# max_depth caps nesting (1 = the top agent may delegate, sub-agents may not —
+# prevents runaway fork bombs). OFF by default.
+# subagents:
+#   enabled: true
+#   max_depth: 1
+
 # ── Self-improvement (optional) ─────────────────────────────────────────────────
 # Lets the agent extend itself, all sandboxed to workspace/. OFF by default — a
 # fresh copy can't author or run self-written code. When enabled it gains:

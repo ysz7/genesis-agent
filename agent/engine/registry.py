@@ -82,7 +82,7 @@ def _unannotated_param(func: Callable) -> str | None:
     return None
 
 
-def discover_tools(config: Config) -> list[Callable]:
+def discover_tools(config: Config, exclude: set[str] | None = None) -> list[Callable]:
     """Return built-in + vertical tools, after applying the ``tools:`` policy.
 
     ``settings.yaml`` may carry a ``tools:`` block::
@@ -93,7 +93,8 @@ def discover_tools(config: Config) -> list[Callable]:
 
     ``disable`` filters tools out entirely; ``confirm`` wraps them so each call
     is approved by a human first (or refused when no confirmation channel is
-    available, e.g. headless serving).
+    available, e.g. headless serving). *exclude* is a runtime addition to
+    ``disable`` (Phase 14 uses it to build a restricted sub-agent toolset).
     """
     tools: list[Callable] = list(BUILTIN_TOOLS)
 
@@ -109,6 +110,12 @@ def discover_tools(config: Config) -> list[Callable]:
         from ..tools.planning import PLANNING_TOOLS
 
         tools.extend(PLANNING_TOOLS)
+
+    # Subagents (Phase 14): an opt-in delegation tool.
+    if (config.settings.get("subagents") or {}).get("enabled"):
+        from ..tools.subagents import SUBAGENT_TOOLS
+
+        tools.extend(SUBAGENT_TOOLS)
 
     # Self-improvement (Phase 11): the agent's own authoring tools, plus any
     # generated tools it has written AND a human has approved. Opt-in, and
@@ -135,7 +142,7 @@ def discover_tools(config: Config) -> list[Callable]:
     tools = deduped
 
     policy = config.settings.get("tools") or {}
-    disable = set(policy.get("disable") or [])
+    disable = set(policy.get("disable") or []) | (exclude or set())
     confirm = set(policy.get("confirm") or [])
 
     tools = [t for t in tools if getattr(t, "__name__", "") not in disable]
