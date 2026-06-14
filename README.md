@@ -29,7 +29,7 @@ OpenRouter · offline Ollama), automatic tool discovery, the agent loop,
 cross-run memory, a live console. You write only what makes your agent *yours*.
 
 And unlike heavyweight frameworks, there's no magic to fight: the whole engine
-is ~2k lines of readable Python on Pydantic AI — small enough to read in an
+is ~3.8k lines of readable Python on Pydantic AI — small enough to read in an
 evening, simple enough to trust in production.
 
 It runs in any environment from day one — interactive terminal, headless HTTP
@@ -121,7 +121,7 @@ uv run agent --serve --port 8181                        # HTTP service
 ```
 
 In the **REPL**, type a task or a command: `/help` · `/tools` · `/clear`
-(forget the conversation) · `/quit`.
+(forget the conversation) · `/reload` (pick up newly approved tools) · `/quit`.
 
 The **HTTP server** binds `127.0.0.1` (localhost only) by default — pass
 `--host 0.0.0.0` to accept remote connections (the Docker image does this). Set

@@ -38,9 +38,18 @@ def _pause() -> None:
 # source agent's own tools, PLAN/CLAUDE/_probe.
 _COPY_FILES = [
     "pyproject.toml", "uv.lock", "README.md", ".gitignore", "schedule.example",
+    ".env.example",
     "start.cmd", "start.sh",
     "Dockerfile", "docker-compose.yml", ".dockerignore",
 ]
+
+# Smaller context/output budgets for local models (Ollama), so a scaffolded
+# local agent is sane out of the box. Keyed by settings.yaml key → value.
+_LOCAL_PROFILE = {
+    "history_keep": "15",
+    "context_budget": "24000",
+    "max_tool_output": "8000",
+}
 
 
 def run_wizard(root: str | None = None) -> int:
@@ -113,7 +122,7 @@ def scaffold_agent(
         shutil.copy2(example, dest / "tools" / "_example.py")
 
     (dest / "persona.md").write_text(_persona(name, role), encoding="utf-8")
-    (dest / "settings.yaml").write_text(_settings(name), encoding="utf-8")
+    (dest / "settings.yaml").write_text(_settings(src, name, provider), encoding="utf-8")
     (dest / ".env").write_text(_env(provider, model, api_key), encoding="utf-8")
 
 
@@ -133,16 +142,38 @@ def _persona(name: str, role: str) -> str:
 """
 
 
-def _settings(name: str) -> str:
-    return f"""# Vertical config for {name} (non-secret). Tools read this via ctx.deps.settings.
-name: {name}
-store: state.json
-retries: 2
+def _settings(src: Path, name: str, provider: str) -> str:
+    """The full, fully-commented template settings.yaml with answers filled in.
 
-# Add your own keys below, e.g.:
-# feeds: [https://hnrss.org/frontpage]
-# symbols: [AAPL, MSFT]
-"""
+    Read from the source agent (so the scaffold never drifts from the template's
+    guidance), with the name set and — for Ollama — the small-context local
+    profile applied so a local agent is sane out of the box.
+    """
+    template = src / "settings.yaml"
+    if not template.exists():  # stripped source — fall back to a minimal file
+        return f"name: {name}\nstore: state.json\nretries: 2\n"
+
+    overrides = {"name": name}
+    note = ""
+    if provider == "ollama":
+        overrides.update(_LOCAL_PROFILE)
+        note = (
+            "# NOTE: Ollama caps context at its default num_ctx (~4k) unless you raise\n"
+            "# OLLAMA_CONTEXT_LENGTH or the model's num_ctx. The local-profile values\n"
+            "# below assume ~32k — match context_budget to the num_ctx you actually set.\n\n"
+        )
+
+    lines = template.read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue  # never touch commented guidance
+        for key, value in overrides.items():
+            if stripped.startswith(f"{key}:"):
+                indent = line[: len(line) - len(stripped)]
+                lines[i] = f"{indent}{key}: {value}"
+                break
+    return note + "\n".join(lines) + "\n"
 
 
 def _env(provider: str, model: str, api_key: str) -> str:

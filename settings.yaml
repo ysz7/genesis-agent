@@ -1,106 +1,148 @@
-# ── genesis-agent vertical config (non-secret) ─────────────────────────────────
-# Loaded into deps.settings and available to every tool via ctx.deps.settings.
-# Secrets go in .env, not here.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  genesis-agent — settings.yaml (non-secret config)                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+# A fresh copy runs with EVERYTHING here left as-is — open this file only when
+# you want to tune something. Secrets (provider, model, API key) go in .env.
+# Each key below says: what it does · its default · good values for your setup.
+# Loaded into deps.settings; tools read it via ctx.deps.settings["..."].
 
-# Display name for this agent (defaults to the folder name).
+# ── Identity ──────────────────────────────────────────────────────────────────
+# Who this agent is and where it keeps state.
+
+# Display name. Default: the folder name.
 name: genesis-agent
 
-# State store filename inside workspace/. Use *.json (readable) or *.db (SQLite).
+# State-store file inside workspace/ for cross-run memory (get/set/append/all).
+# Default: state.json. Use *.json (human-readable, diffable) or *.db (SQLite,
+# better for large/concurrent state).
 store: state.json
 
-# How many times Pydantic AI retries a failed tool/model call.
-retries: 2
+# Sandbox + state directory, relative to this folder. Default: workspace.
+# Rarely changed — handy to point several agents at one shared area, or onto a
+# mounted volume.
+# workspace: workspace
 
-# Cap on a single tool's output, in characters (run_shell, fetch_url, the HTML
-# cleaner). ~20k chars ≈ 5k tokens — fine for cloud models, but one big result
-# can swamp a small local context. Per-setup hints:
-#   cloud (GPT/Claude)                  : 20000
-#   local 32k ctx (qwen2.5)             : 8000
-#   local 8k ctx (llama3.1:8b default)  : 3000
-max_tool_output: 20000
+# ── Memory & context ───────────────────────────────────────────────────────────
+# How much conversation and tool output the model carries. The defaults suit
+# large cloud contexts; shrink them for small local models (see "Running on
+# local models" in the README).
 
-# Local run log: append one JSON line per run (task, duration, tokens, ok/err)
-# to workspace/runs.jsonl. Greppable history, zero external services.
-# log_runs: true
-
-# REPL conversation memory: how many recent messages to carry between turns
-# (older ones are dropped to keep context bounded). /clear forgets the session.
-# One-shot runs and the HTTP server are stateless regardless.
+# REPL turns kept between prompts (older messages dropped). Default: 40.
+#   cloud models            : 40
+#   small local contexts    : 10-15
+# One-shot runs and the HTTP server are stateless regardless; /clear forgets it.
 history_keep: 40
 
-# ── History auto-compaction ──────────────────────────────────────────────────
-# When the conversation outgrows ~60% of context_budget, everything except the
-# last `keep` messages is replaced by a model-written summary, so facts from
-# the start of a long session survive instead of being truncated away.
-# context_budget is your model's usable context window, in tokens. Presets:
-#   GPT-4o / Claude / most cloud models : 100000
-#   qwen2.5 via Ollama (32k context)    : 24000
-#   llama3.1:8b at default num_ctx (8k) : 6000
+# Your model's usable context window, in tokens — auto-compaction triggers at
+# ~60% of this (older history is summarized, not truncated, so early facts
+# survive). Default: 100000.
+#   GPT-4o / Claude / most cloud   : 100000
+#   qwen2.5 via Ollama (32k)       : 24000
+#   llama3.1:8b at default num_ctx : 6000
 context_budget: 100000
+
+# Auto-compaction behaviour. enabled: true by default (set false to fall back to
+# plain history_keep truncation). keep = recent messages left verbatim;
+# max_tokens caps the summary itself.
+#   chatty/long sessions    : keep 12 (default)
+#   tight local context     : keep 6, max_tokens 512
 compaction:
   enabled: true
-  keep: 12          # recent messages kept verbatim
-  # max_tokens: 1024  # cap on the summary itself
+  keep: 12
+  # max_tokens: 1024
 
-# ── Run guardrails ───────────────────────────────────────────────────────────
-# Per-run ceilings (pydantic_ai.usage.UsageLimits). request_limit caps how many
-# model requests a single task may make — the cheapest insurance against a
-# runaway tool loop burning tokens. Add total_tokens_limit to cap spend per run.
-# Hitting a limit ends the run with a clean message, not a stack trace.
+# Cap on a SINGLE tool's output, in characters (run_shell, fetch_url, HTML
+# cleaner). Default: 20000 (~5k tokens). One big result can swamp a small local
+# context, so lower it there.
+#   cloud (GPT/Claude)             : 20000
+#   local 32k ctx (qwen2.5)        : 8000
+#   local 8k ctx (llama3.1:8b)     : 3000
+max_tool_output: 20000
+
+# ── Guardrails ─────────────────────────────────────────────────────────────────
+# Keep a run bounded and reliable.
+
+# Per-run ceilings (pydantic_ai.usage.UsageLimits). request_limit caps model
+# requests per task — the cheapest insurance against a runaway tool loop. A hit
+# ends the run with a clean message, not a stack trace. Default: request_limit 25.
+#   simple Q&A verticals    : 10
+#   default                 : 25
+#   long research tasks     : 50+
+# Add total_tokens_limit to cap spend per run.
 limits:
   request_limit: 25
   # total_tokens_limit: 200000
 
-# ── Model knobs ──────────────────────────────────────────────────────────────
-# Anything pydantic_ai's ModelSettings accepts, passed through as-is.
+# Retries on a failed tool/model call (Pydantic AI). Default: 2.
+#   cloud APIs              : 2
+#   flaky local setups      : 3-4
+#   debugging tool errors   : 0  (see the real failure immediately)
+retries: 2
+
+# ── Model ────────────────────────────────────────────────────────────────────
+# Knobs passed straight to the model (pydantic_ai ModelSettings) — anything it
+# accepts works, so new keys need no template change. Unset = provider defaults.
+#   tool-driven / deterministic verticals : temperature 0
+#   creative writing verticals            : temperature 0.7+
+# max_tokens caps the model's reply length; timeout is per request (seconds).
 # model_settings:
 #   temperature: 0
 #   max_tokens: 2048
 #   timeout: 60
 
-# ── Filesystem sandbox ───────────────────────────────────────────────────────
-# read_file/write_file/list_dir refuse paths outside workspace/ (relative ../
-# escapes and absolute paths alike). Set to false ONLY for trusted setups.
-# NOTE: this does not constrain run_shell — gate that via `tools:` below.
+# ── Sandbox & tools ─────────────────────────────────────────────────────────────
+# Control what the agent can touch.
+
+# Confine read_file/write_file/list_dir to workspace/ (../ escapes and absolute
+# paths outside are refused). Default: true. Set false ONLY for trusted setups.
+# Does NOT constrain run_shell — gate that with `tools:` below.
 # sandbox: true
 
-# ── Tool policy ──────────────────────────────────────────────────────────────
-# disable: tools never registered (the model can't see or call them).
-# confirm: tools that require a human y/N before each call. In the CLI you get a
-#   prompt; headless (--serve) has no human, so a confirm-listed tool refuses to
-#   run and returns a notice instead. Rationale: fetch_url content is
-#   attacker-controlled (prompt injection), so an unconfirmed run_shell is an
-#   injection-to-RCE chain — confirm or disable run_shell for untrusted inputs.
+# Tool policy. disable: tools never registered (the model can't see them).
+# confirm: tools that need a human y/N before each call (in the CLI; headless
+# --serve has no human, so a confirm-listed tool refuses to run).
+# Why it matters: fetch_url content is attacker-controlled (prompt injection),
+# so an unconfirmed run_shell is an injection-to-RCE chain.
+#   untrusted inputs / web content : confirm or disable run_shell
+#   fully trusted local use        : leave unset
 # tools:
 #   disable: []
 #   confirm: [run_shell]
 
-# ── HTTP server (--serve) ────────────────────────────────────────────────────
-# Per-task wall-clock ceiling, seconds. A task (POST /task or GET /task/stream)
-# that runs longer is cancelled and answered with 504. Guards against a hung
-# model call holding a worker thread forever.
+# ── Server (--serve) ───────────────────────────────────────────────────────────
+# Per-task wall-clock ceiling, seconds — a longer task is cancelled with 504.
+# Default: 300. Guards against a hung model call holding a worker thread.
+#   interactive/short tasks : 120
+#   default                 : 300
+#   long research endpoints : 600+
 # serve_timeout: 300
 
-# ── Self-improvement (optional, Phase 11) ────────────────────────────────────
-# When enabled, the agent gets tools to extend itself, all sandboxed to
-# workspace/: write_skill/read_skill (markdown procedures, no approval),
-# remember (lessons recalled in later sessions), and write_tool (Python tools
-# that run ONLY after passing validation AND a human approval — "always allow"
-# grants persist in workspace/approvals.json and re-prompt if the code changes).
-# Off by default: a fresh copy can't author or run self-written code.
+# ── Self-improvement (optional) ─────────────────────────────────────────────────
+# Lets the agent extend itself, all sandboxed to workspace/. OFF by default — a
+# fresh copy can't author or run self-written code. When enabled it gains:
+# write_skill/read_skill (markdown procedures, no approval), remember (lessons
+# recalled next session), and write_tool/read_tool (Python tools that run ONLY
+# after validation AND a human approval; "always allow" grants persist in
+# workspace/approvals.json and re-prompt when the code changes).
 # self_improvement:
 #   enabled: true
-# memory_recall: 5          # recent lessons injected into the system prompt
+# Recent lessons injected into the system prompt. Default: 5. (0 disables recall.)
+# memory_recall: 5
+# Generated-tool execution limits. timeout = wall-clock seconds a generated tool
+# may run (default 10). banned_imports = modules rejected at validation.
 # generated_tools:
-#   timeout: 10             # wall-clock seconds a generated tool may run
+#   timeout: 10
 #   banned_imports: [subprocess, socket, ctypes, multiprocessing]
+# Approvals. headless_allow_granted: on --serve (no human), honor previously
+# persisted "always allow" grants instead of denying. Default: false (deny).
 # approvals:
-#   headless_allow_granted: false   # --serve: honor persisted grants without a human
+#   headless_allow_granted: false
 
-# ── External MCP tool servers (optional) ─────────────────────────────────────
-# Opt-in: install with `uv sync --extra mcp`, then declare servers here. Their
-# tools appear to the agent like built-ins (prefixed with `name`). stdio servers
-# are spawned locally; remote servers use `url`. See examples/mcp_demo/.
+# ── MCP servers (optional) ──────────────────────────────────────────────────────
+# Opt-in external tool servers. Install with `uv sync --extra mcp`, then declare
+# them here; their tools appear like built-ins (prefixed with `name`). stdio
+# servers are spawned locally; remote servers use `url`. See examples/mcp_demo/.
+# Unset = no MCP, nothing changes.
 # mcp:
 #   - name: demo
 #     command: python
@@ -110,8 +152,8 @@ limits:
 #     headers:
 #       Authorization: "Bearer ..."
 
-# ── Vertical settings — add your own below ───────────────────────────────────
-# Tools read these via ctx.deps.settings["..."]. Examples:
+# ── Your vertical's settings ────────────────────────────────────────────────────
+# Add any keys your tools need; read them via ctx.deps.settings["..."]. Examples:
 # symbols: [AAPL, MSFT, NVDA]
 # thresholds:
 #   max_position: 1000
