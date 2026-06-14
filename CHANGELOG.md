@@ -8,6 +8,37 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [0.7.0] — 2026-06-14
+
+Frontier capability baseline — planning, delegation, multimodal, caching.
+All new capabilities are opt-in (off by default), so existing agents are
+unchanged.
+
+### Added
+- **Explicit planning / todo scratchpad** (`planning.enabled`): an `update_plan`
+  tool that keeps a short checklist the model maintains across a multi-step task
+  — shown in the system prompt each turn and rendered live in the console
+  (○ pending → ▸ in_progress → ✓ done).
+- **Subagents / delegation** (`subagents.enabled`): a `delegate(task)` tool that
+  runs a fresh sub-agent on an isolated subtask (clean context) and folds the
+  answer back. Safe by default — depth guard (`max_depth`, no fork bombs),
+  restricted toolset (no `write_tool`), and the sub-agent's token cost charged to
+  the parent's usage budget.
+- **Multimodal input**: attach images/PDFs to a run — one-shot `--image
+  PATH_OR_URL`, drag a file into the REPL, or `POST /task` with
+  `{"images": ["https://..."]}` (server accepts URLs only). Needs a
+  vision-capable model; `attachments.max_mb` caps size.
+- **Prompt caching** (`prompt_caching`): reuse the provider's prompt cache —
+  Anthropic caches the static tool definitions; the stats footer shows
+  "N cached" tokens when a run reads from cache. OpenAI/OpenRouter cache
+  automatically; other providers no-op.
+
+### Changed
+- Hardened model-error handling: a one-shot run now catches generic
+  model/provider errors with a clean message instead of a stack trace, and
+  image-related failures suggest switching to a vision-capable model (CLI + the
+  server's error payload).
+
 ## [0.6.0] — 2026-06-14
 
 Update awareness, a settings.yaml that teaches itself, and a smarter scaffold.
