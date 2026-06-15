@@ -59,8 +59,7 @@ else
 fi
 
 echo
-echo "=== Done ==="
-echo "  1. Edit .env  (set PROVIDER / MODEL / API_KEY)"
-echo "  2. Start the agent:   ./start.sh"
-echo "     (next times, just run ./start.sh)"
+echo "=== Agent ready ==="
+echo "  To begin, run:   ./start.sh"
+echo "  The first launch walks you through provider, model, and key."
 echo

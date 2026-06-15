@@ -23,6 +23,25 @@ from . import display
 EMERALD = "#10b981"
 console = Console()
 PROVIDERS = ["openai", "anthropic", "openrouter", "ollama"]
+_DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-haiku-4-5",
+    "openrouter": "openai/gpt-4o-mini",
+    "ollama": "llama3.1:8b",
+}
+
+
+def _clear() -> None:
+    """Hard-clear the terminal — screen AND scrollback, then home the cursor.
+
+    rich's ``_clear()`` emits only ``ESC[2J`` (clear visible screen) + home,
+    which several terminals (VS Code, Windows Terminal) leave with stale frames in
+    the scrollback. Adding ``ESC[3J`` wipes the scrollback so menu screens don't
+    pile up. Written through the console's own stream so ordering with rich output
+    is preserved.
+    """
+    console.file.write("\033[2J\033[3J\033[H")
+    console.file.flush()
 
 
 # ── Key reading (stdlib, cross-platform) ─────────────────────────────────────
@@ -69,7 +88,7 @@ def _read_key() -> str | None:
 
 
 def _render(title: str, subtitle: str, options: list[str], index: int) -> None:
-    console.clear()
+    _clear()
     console.print(display.LOGO)
     if subtitle:
         console.print(f"  [dim]{subtitle}[/]")
@@ -241,7 +260,7 @@ def _chat(root) -> None:
     from ..engine.factory import build_agent
     from ..__main__ import _repl
 
-    console.clear()
+    _clear()
     config = load_config(root)
     agent = build_agent(config)
     deps = build_deps(config)
@@ -265,7 +284,7 @@ def _serve(root) -> None:
     from ..runtime.config import load_config
     from ..server import serve
 
-    console.clear()
+    _clear()
     try:
         raw = input("  Port [8181]: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -277,7 +296,7 @@ def _serve(root) -> None:
 
     config = load_config(root)
     monitor = display.ServerMonitor(config.agent_name, port)
-    console.clear()
+    _clear()
     try:
         serve(config, port=port, monitor=monitor)   # blocks until Ctrl+C; cleans up
     except KeyboardInterrupt:
@@ -293,7 +312,7 @@ def _check_updates(root) -> None:
     """Read-only: compare the local version against the newest tag on GitHub."""
     from ..runtime import updates
 
-    console.clear()
+    _clear()
     cur = updates.current_version(root)
     console.print(f"\n  current version  [bold]{cur}[/]")
     with console.status(f"[{EMERALD}]checking GitHub…", spinner="dots"):
@@ -352,7 +371,7 @@ def _settings(root: Path) -> None:
 
 def _prompt_set(env_file: Path, key: str, label: str) -> None:
     current = _read_env(env_file).get(key, "")
-    console.clear()
+    _clear()
     console.print(f"\n  [bold]{label}[/]")
     console.print("  [dim]Edit the value, then Enter to save · Esc to cancel.[/]\n")
     try:
@@ -430,7 +449,7 @@ def _scheduler(root) -> None:
 
 
 def _add_job(deps, jobs: list[dict]) -> None:
-    console.clear()
+    _clear()
     console.print("\n  [bold]New scheduled task[/]")
     console.print("  [dim]What should the agent do? Enter to confirm · Esc to cancel.[/]\n")
     task = _edit_line("  task= ", "")
@@ -461,7 +480,7 @@ def _remove_job(deps, jobs: list[dict]) -> None:
 
 def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
     """Passive feed: fire each job on its interval until Ctrl+C. No input prompt."""
-    console.clear()
+    _clear()
     lines = "\n".join(
         f"[dim]every {_fmt_every(j['every']):>4}[/]  {_clip(j['task'], 56)}" for j in jobs
     )
@@ -513,10 +532,74 @@ def _run_job(agent, deps, job: dict) -> None:
         append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
 
 
+# ── First-run setup ───────────────────────────────────────────────────────────
+
+def _needs_setup(root: Path) -> bool:
+    """True when the agent has no usable credentials yet (a fresh install).
+
+    Ollama needs no key, so it's always considered configured.
+    """
+    from ..runtime.config import load_config
+
+    try:
+        cfg = load_config(root)
+    except Exception:  # noqa: BLE001 - unreadable config → treat as unconfigured
+        return True
+    if cfg.provider == "ollama":
+        return False
+    return not cfg.api_key
+
+
+def _first_run_setup(root: Path) -> None:
+    """Guided first-run config: provider → model → key. Writes ``.env``.
+
+    Shown the first time ``start`` runs on an unconfigured agent, instead of the
+    main menu. Reuses the same building blocks as Settings, so the agent is ready
+    after a couple of choices — no hand-editing ``.env``.
+    """
+    env_file = root / ".env"
+    _clear()
+    console.print(display.LOGO)
+    console.print("  [bold]Welcome — let's set up your agent.[/]")
+    console.print("  [dim]A couple of choices; change them anytime in Settings.[/]\n")
+
+    pick = select("Provider", PROVIDERS, subtitle="which model powers your agent")
+    if pick is None:
+        return  # cancelled — fall through to the menu, Settings is there too
+    provider = PROVIDERS[pick]
+    _set_env(env_file, "PROVIDER", provider)
+
+    default_model = _DEFAULT_MODELS.get(provider, "")
+    _clear()
+    console.print(f"\n  [bold]Model[/]  [dim](provider: {provider})[/]")
+    console.print("  [dim]Enter to accept the default · edit to change.[/]\n")
+    model = _edit_line("  MODEL= ", default_model) or default_model
+    _set_env(env_file, "MODEL", model.strip())
+
+    if provider == "ollama":
+        _set_env(env_file, "BASE_URL", "http://localhost:11434/v1")
+        console.print("\n  [dim]Ollama runs locally — no API key needed.[/]")
+    else:
+        _clear()
+        console.print("\n  [bold]API key[/]")
+        console.print("  [dim]Paste your key, or leave blank to add later in Settings.[/]\n")
+        key = _edit_line("  API_KEY= ", "")
+        if key and key.strip():
+            _set_env(env_file, "API_KEY", key.strip())
+
+    display.ok("agent configured")
+    try:
+        input("  press Enter to open the menu... ")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 # ── Main loop ────────────────────────────────────────────────────────────────
 
 def run(root: str | None = None) -> int:
     root_path = Path(root or os.getcwd()).resolve()
+    if _needs_setup(root_path):
+        _first_run_setup(root_path)
     while True:
         choice = select(
             "Main menu",
@@ -546,5 +629,5 @@ def run(root: str | None = None) -> int:
         elif choice == 5:
             _check_updates(root_path)
         else:
-            console.clear()
+            _clear()
             return 0

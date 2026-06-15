@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 from . import display
-from .menu import EMERALD, PROVIDERS, _edit_line, console, select
+from .menu import EMERALD, PROVIDERS, _clear, _edit_line, console, select
 
 _DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
@@ -55,7 +55,7 @@ _LOCAL_PROFILE = {
 def run_wizard(root: str | None = None) -> int:
     src = Path(root or os.getcwd()).resolve()
 
-    console.clear()
+    _clear()
     console.print(f"\n  [bold {EMERALD}]New agent[/]   [dim]created next to {src.name}/[/]")
     console.print("  [dim]Enter to confirm each field · Esc to cancel.[/]\n")
 
@@ -89,7 +89,7 @@ def run_wizard(root: str | None = None) -> int:
         _pause()
         return 1
 
-    console.clear()
+    _clear()
     display.ok(f"created [bold]{dest}[/]")
     console.print()
     console.print(f"  [dim]cd ../{name}[/]")

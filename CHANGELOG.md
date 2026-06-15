@@ -8,6 +8,29 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [0.8.0] — 2026-06-15
+
+Onboarding and polish — a guided first run, a cleaner console, a refreshed site.
+
+### Added
+- **Guided first-run setup.** A fresh install no longer requires hand-editing
+  `.env`: the first `start` launch walks you through provider → model → key and
+  writes it for you, then opens the menu. Already-configured agents go straight
+  to the menu. (Ollama needs no key and skips that step.)
+
+### Changed
+- Installers now finish with "Agent ready — run `./start.sh`" instead of
+  "edit `.env`", since the first launch configures the agent.
+- README and landing page present **two install paths**: one command (fastest)
+  or step-by-step clone; the one-command paste also launches straight into setup.
+- Refreshed the landing page (`docs/`): new copy and design, kept the emerald
+  accent.
+
+### Fixed
+- The interactive menu no longer leaves stale frames stacked when navigating
+  (clearing now also wipes the scrollback) — fixes the duplicated-screen glitch
+  in VS Code / Windows Terminal.
+
 ## [0.7.0] — 2026-06-14
 
 Frontier capability baseline — planning, delegation, multimodal, caching.

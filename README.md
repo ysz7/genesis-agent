@@ -40,35 +40,34 @@ copy is already a working general-purpose agent with five built-in tools:
 
 ## Quickstart
 
-Open a terminal in an **empty folder** and paste — this downloads the project,
-installs `uv` and all dependencies, and creates `.env`:
+**Option 1 — one command (fastest).** Open a terminal in an **empty folder** and
+paste. It downloads the project, installs `uv` + dependencies, then you launch —
+**the first run walks you through provider, model, and key**, no file editing:
 
 ```powershell
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.ps1 | iex
+.\start.cmd
 ```
 
 ```bash
 # Linux / macOS
 curl -LsSf https://raw.githubusercontent.com/ysz7/genesis-agent/main/scripts/install.sh | sh
+./start.sh
 ```
 
-Then set `PROVIDER` / `MODEL` / `API_KEY` in `.env` and launch: **`start.cmd`**
-(Windows) / **`./start.sh`** (Linux/macOS).
-
-Manual install (clone first):
+**Option 2 — step by step.** Prefer to clone and inspect everything first:
 
 ```bash
 git clone https://github.com/ysz7/genesis-agent.git
 cd genesis-agent
-powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
-./scripts/install.sh                                           # Linux/macOS
+./scripts/install.sh    # Windows: powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+./start.sh              # Windows: start.cmd  — first launch configures it
 ```
 
-- No API key? Set `PROVIDER=ollama`, `MODEL=llama3.1:8b`,
-  `BASE_URL=http://localhost:11434/v1` — fully offline.
-- Forked the repo? Point the installer at it: edit `$Repo` / `REPO` in
-  `scripts/install.*` or set `GENESIS_REPO=...`.
+- No API key? Pick **Ollama** in the setup — fully offline, no key.
+- Forked the repo? Point the installer at it with `GENESIS_REPO=...` (or edit
+  `$Repo` / `REPO` in `scripts/install.*`).
 
 ## Features
 

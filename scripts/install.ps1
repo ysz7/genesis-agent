@@ -80,8 +80,7 @@ else {
 }
 
 Write-Host ""
-Write-Host "=== Done ==="
-Write-Host "  1. Edit .env  (set PROVIDER / MODEL / API_KEY)"
-Write-Host "  2. Start the agent:   .\start.cmd"
-Write-Host "     (next times, just double-click start.cmd)"
+Write-Host "=== Agent ready ==="
+Write-Host "  To begin, run:   .\start.cmd"
+Write-Host "  The first launch walks you through provider, model, and key."
 Write-Host ""
