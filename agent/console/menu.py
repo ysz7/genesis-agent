@@ -34,11 +34,12 @@ _DEFAULT_MODELS = {
 def _clear() -> None:
     """Hard-clear the terminal — screen AND scrollback, then home the cursor.
 
-    rich's ``_clear()`` emits only ``ESC[2J`` (clear visible screen) + home,
-    which several terminals (VS Code, Windows Terminal) leave with stale frames in
-    the scrollback. Adding ``ESC[3J`` wipes the scrollback so menu screens don't
-    pile up. Written through the console's own stream so ordering with rich output
-    is preserved.
+    rich's ``Console.clear()`` emits only ``ESC[2J`` (clear visible screen) +
+    home, which several terminals (VS Code, Windows Terminal) leave with stale
+    frames in the scrollback. Adding ``ESC[3J`` wipes the scrollback so menu
+    screens don't pile up. Used for full screen transitions; the arrow-select
+    loop redraws in place instead (see ``_render``) to avoid flicker. Written
+    through the console's own stream so ordering with rich output is preserved.
     """
     console.file.write("\033[2J\033[3J\033[H")
     console.file.flush()
@@ -88,7 +89,11 @@ def _read_key() -> str | None:
 
 
 def _render(title: str, subtitle: str, options: list[str], index: int) -> None:
-    _clear()
+    # Redraw IN PLACE — home the cursor and overwrite, then erase whatever is
+    # left below. No full-screen wipe, so arrow navigation doesn't flicker.
+    # The cursor is hidden during the redraw to avoid it jumping around.
+    console.file.write("\033[?25l\033[H")
+    console.file.flush()
     console.print(display.LOGO)
     if subtitle:
         console.print(f"  [dim]{subtitle}[/]")
@@ -99,6 +104,8 @@ def _render(title: str, subtitle: str, options: list[str], index: int) -> None:
         else:
             console.print(f"    [dim]{opt}[/]")
     console.print("\n  [dim]↑/↓ move · Enter select · Esc back[/]")
+    console.file.write("\033[0J")   # erase any leftover from a longer prior frame
+    console.file.flush()
 
 
 def _edit_line(prompt: str, initial: str = "") -> str | None:
@@ -189,20 +196,25 @@ def select(title: str, options: list[str], subtitle: str = "", index: int = 0) -
             return None
         return int(raw) - 1 if raw.isdigit() and 1 <= int(raw) <= len(options) else None
 
-    while True:
-        _render(title, subtitle, options, index)
-        try:
-            key = _read_key()
-        except KeyboardInterrupt:
-            return None
-        if key == "up":
-            index = (index - 1) % len(options)
-        elif key == "down":
-            index = (index + 1) % len(options)
-        elif key == "enter":
-            return index
-        elif key == "esc":
-            return None
+    _clear()                                   # full clear once on entry
+    try:
+        while True:
+            _render(title, subtitle, options, index)
+            try:
+                key = _read_key()
+            except KeyboardInterrupt:
+                return None
+            if key == "up":
+                index = (index - 1) % len(options)
+            elif key == "down":
+                index = (index + 1) % len(options)
+            elif key == "enter":
+                return index
+            elif key == "esc":
+                return None
+    finally:
+        console.file.write("\033[?25h")        # always restore the cursor
+        console.file.flush()
 
 
 # ── .env read / write ────────────────────────────────────────────────────────
