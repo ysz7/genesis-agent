@@ -161,8 +161,8 @@ retries: 2
 # recalled next session), and write_tool/read_tool (Python tools that run ONLY
 # after validation AND a human approval; "always allow" grants persist in
 # workspace/approvals.json and re-prompt when the code changes).
-# self_improvement:
-#   enabled: true
+self_improvement:
+  enabled: true
 # Recent lessons injected into the system prompt. Default: 5. (0 disables recall.)
 # memory_recall: 5
 # Generated-tool execution limits. timeout = wall-clock seconds a generated tool
