@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic_ai import Agent
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -338,9 +339,25 @@ def info(msg: str) -> None:
     console.print(f"  [dim]{msg}[/]")
 
 
-def answer(text: str) -> None:
-    """Render the agent's final answer."""
-    console.print(Panel(Text(str(text)), border_style="green", title="[dim]answer[/]"))
+def answer(text: str, *, markdown: bool = True) -> None:
+    """Render the agent's final answer — as Markdown by default.
+
+    Many models reply in Markdown (``**bold**``, lists, ``code``); rendering it
+    turns that into proper console formatting instead of showing raw syntax. Set
+    ``markdown=False`` (settings ``render_markdown: false``) for verbatim text.
+    Rendering failures fall back to plain text so an answer never breaks.
+    """
+    body = str(text)
+    renderable = None
+    if markdown and body.strip():
+        try:
+            renderable = Markdown(body)
+        except Exception:  # noqa: BLE001 - never let rendering break the answer
+            renderable = None
+    console.print(
+        Panel(renderable if renderable is not None else Text(body),
+              border_style="green", title="[dim]answer[/]")
+    )
 
 
 def confirm_tool(name: str, rendered_args: str) -> bool:

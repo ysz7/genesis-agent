@@ -37,6 +37,12 @@ syncing, since some releases change defaults.
   endpoint; pure-Python similarity). Any embedding failure degrades to recency;
   off by default, behaviour unchanged.
 
+### Fixed
+- The CLI now renders the agent's final answer as **Markdown** (bold, lists,
+  `code`, headings) instead of printing raw syntax like `**bold**`. Falls back to
+  plain text if rendering fails; set `render_markdown: false` for verbatim output.
+  (Server/JSON output is unchanged — raw text.)
+
 ## [0.9.0] — 2026-06-27
 
 ### Added

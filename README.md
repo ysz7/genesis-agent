@@ -123,6 +123,7 @@ enable). Every `settings.yaml` key:
 |---------|--------------|---------|
 | `name` | display name | ✅ on (folder name) |
 | `store` | cross-run state file (JSON / SQLite) | ✅ on (`state.json`) |
+| `render_markdown` | render the final answer as Markdown in the console | ✅ on (default `true`) |
 | `workspace` | sandbox + state directory | ✅ on (`workspace`) |
 | `history_keep` | REPL turns kept between prompts | ✅ on (`40`) |
 | `threads` | persist / resume conversations by id | ⬜ off |

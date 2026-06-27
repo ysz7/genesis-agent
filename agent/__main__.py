@@ -127,7 +127,7 @@ def _one_shot(agent, task, deps, model: str) -> int:
     except Exception as exc:  # noqa: BLE001 - a model/provider failure, not a crash
         display.err(f"model error: {exc}{vision_hint(exc)}")
         return 1
-    display.answer(result.output)
+    display.answer(result.output, markdown=deps.settings.get("render_markdown", True))
     return 0
 
 
@@ -232,7 +232,7 @@ def _repl(agent, config, deps, session_id=None) -> int:
             result = asyncio.run(
                 display.run_streamed(agent, prompt, deps, config.model, message_history=history)
             )
-            display.answer(result.output)
+            display.answer(result.output, markdown=config.settings.get("render_markdown", True))
             history.extend(result.new_messages())
             if len(history) > keep:
                 del history[:-keep]

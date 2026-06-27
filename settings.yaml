@@ -22,6 +22,11 @@ store: state.json
 # mounted volume.
 # workspace: workspace
 
+# Render the agent's final answer as Markdown in the console (so **bold**, lists,
+# and `code` show as formatting, not raw syntax). Default: true. Set false for
+# verbatim raw text — e.g. when piping the answer into another tool.
+render_markdown: true
+
 # ── Memory & context ───────────────────────────────────────────────────────────
 # How much conversation and tool output the model carries. The defaults suit
 # large cloud contexts; shrink them for small local models (see "Running on
