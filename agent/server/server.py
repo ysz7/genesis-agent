@@ -45,6 +45,7 @@ from ..runtime import threads
 from ..runtime.runlog import append_run
 from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
+from ..engine import guardrails
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 
 MAX_BODY = 1_048_576  # 1 MB — reject larger POST bodies with 413 before reading.
@@ -153,10 +154,14 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
         def _query_task(self, parsed) -> str | None:
             params = parse_qs(parsed.query)
             task = (params.get("q") or params.get("task") or [""])[0]
-            if task.strip():
-                return task
-            self._send(400, {"error": f"GET {parsed.path} needs ?q=<task>"})
-            return None
+            if not task.strip():
+                self._send(400, {"error": f"GET {parsed.path} needs ?q=<task>"})
+                return None
+            allowed, task = guardrails.check_input(config.settings, task)
+            if not allowed:
+                self._send(400, {"error": task})
+                return None
+            return task
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib naming
             self._detailed = False
@@ -173,6 +178,11 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 task = data["task"]
             except (json.JSONDecodeError, KeyError):
                 self._send(400, {"error": "expected JSON body with a 'task' field"})
+                return
+            # Input guardrails (Phase 21): refuse/redact before building the prompt.
+            allowed, task = guardrails.check_input(config.settings, task)
+            if not allowed:
+                self._send(400, {"error": task})
                 return
             # Optional multimodal input — URLs only (a remote local path would be
             # an arbitrary-file-read hole).

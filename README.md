@@ -216,6 +216,7 @@ files with the same notes — this is just the consolidated reference.
 | `model_fallbacks` | — | backup model ids (same provider) retried on a transient primary failure |
 | `sandbox` | `true` | confine file tools to `workspace/`; `false` to allow any path |
 | `tools` | — | `disable: [...]` (never registered) · `confirm: [...]` (human y/N) |
+| `guardrails` | — | regex `input`/`output` `block`/`redact` — a content layer over the tool policy |
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |

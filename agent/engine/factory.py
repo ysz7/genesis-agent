@@ -157,4 +157,12 @@ def build_agent(
         def _memory() -> str:
             return memory_digest(workspace, recall)
 
+    # Output guardrails (Phase 21, opt-in): a content validator that redacts or
+    # rejects (→ retry) the model's answer per `guardrails.output` in settings.
+    from .guardrails import output_validator_for
+
+    validator = output_validator_for(config.settings)
+    if validator is not None:
+        agent.output_validator(validator)
+
     return agent

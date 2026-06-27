@@ -24,6 +24,12 @@ syncing, since some releases change defaults.
   the next one transparently — same provider/key, wrapped in Pydantic AI's
   `FallbackModel`. For availability, not bad output; shown in the startup banner.
   Unset = single model, unchanged.
+- **Input / output guardrails** (`guardrails`, Phase 21). An opt-in, regex-based
+  content layer on top of the tool policy: `input.block` refuses a matching task
+  (never sent to the model), `input.redact` masks spans before sending;
+  `output.block` makes a matching answer retry then fail cleanly, `output.redact`
+  masks spans in the answer. Ships the seam, not a policy library — no heavy
+  dependency. Off by default.
 
 ## [0.9.0] — 2026-06-27
 

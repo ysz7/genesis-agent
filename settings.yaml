@@ -128,6 +128,23 @@ retries: 2
 #   disable: []
 #   confirm: [run_shell]
 
+# Guardrails (optional). A content layer ON TOP of the tool policy: regex checks
+# on the run's text input and the model's output. OFF by default (zero overhead).
+# input.block  : a matching task is refused, never sent to the model.
+# input.redact : matching spans are replaced with [redacted] before sending.
+# output.block : a matching answer triggers a retry (up to `retries`), then a
+#                clean failure.
+# output.redact: matching spans are replaced with [redacted] in the answer.
+# This is the *seam*, not a policy library — a vertical adds its own patterns
+# (or a custom @agent.output_validator in factory.py). Injection defence still
+# rests on the tool policy above; this guards the content, not the tool calls.
+# guardrails:
+#   input:
+#     block:  ["(?i)\\bssn\\b"]
+#     redact: ["\\b\\d{16}\\b"]
+#   output:
+#     redact: ["\\b\\d{16}\\b"]
+
 # ── Server (--serve) ───────────────────────────────────────────────────────────
 # Per-task wall-clock ceiling, seconds — a longer task is cancelled with 504.
 # Default: 300. Guards against a hung model call holding a worker thread.

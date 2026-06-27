@@ -99,8 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
         if args.task:
+            from .engine import guardrails
+
+            allowed, text = guardrails.check_input(config.settings, " ".join(args.task))
+            if not allowed:
+                display.warn(text)
+                return 0
             prompt = build_user_prompt(
-                " ".join(args.task), args.image or [], allow_local=True,
+                text, args.image or [], allow_local=True,
                 max_mb=max_mb_from(config.settings),
             )
             return _one_shot(agent, prompt, deps, config.model)
@@ -204,6 +210,13 @@ def _repl(agent, config, deps, session_id=None) -> int:
                 tools = discover_tools(config)
                 display.ok("tools reloaded")
             display.info("tools: " + ", ".join(tool_names(tools)))
+            continue
+        # Input guardrails (Phase 21): refuse or redact before anything runs.
+        from .engine import guardrails
+
+        allowed, task = guardrails.check_input(config.settings, task)
+        if not allowed:
+            display.warn(task)
             continue
         # Drag a file into the terminal → it arrives as a path; attach it.
         clean, attached = extract_attachments(task)
