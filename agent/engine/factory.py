@@ -154,7 +154,13 @@ def build_agent(
             return skills_overview(workspace)
 
         @agent.system_prompt
-        def _memory() -> str:
+        def _memory(ctx: RunContext[AgentDeps]) -> str:
+            # Semantic recall (Phase 19): rank lessons by relevance to the current
+            # task when memory.semantic is on; else recency (Phase 11f).
+            from ..runtime import memory
+
+            if memory.semantic_enabled(config.settings):
+                return memory.semantic_recall(ctx.deps, memory.current_query(ctx), recall)
             return memory_digest(workspace, recall)
 
     # Output guardrails (Phase 21, opt-in): a content validator that redacts or

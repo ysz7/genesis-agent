@@ -103,9 +103,19 @@ def remember(ctx: RunContext[AgentDeps], lesson: str) -> str:
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "lesson": lesson.strip(),
     }
+    # Semantic memory (Phase 19): store an embedding so recall can rank by
+    # relevance, not just recency. Best-effort — a failed embed just omits it.
+    from ..runtime import memory
+
+    if memory.semantic_enabled(ctx.deps.settings):
+        vec = memory.embed(ctx.deps, lesson.strip())
+        if vec is not None:
+            entry["embedding"] = vec
     path = ctx.deps.memory_dir / "lessons.jsonl"
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if memory.semantic_enabled(ctx.deps.settings):
+        memory.trim(path, int(memory._opt(ctx.deps.settings, "max_vectors", memory.DEFAULT_MAX_VECTORS)))
     return "Lesson recorded."
 
 

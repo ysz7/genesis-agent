@@ -222,6 +222,20 @@ self_improvement:
 # approvals:
 #   headless_allow_granted: false
 
+# Semantic memory (optional). By default `remember` lessons are recalled by
+# RECENCY (the last memory_recall). Turn this on and recall ranks lessons by
+# RELEVANCE to the current task instead — `remember` stores an embedding next to
+# each lesson, and recall does a cosine match. Lightweight (no vector DB); any
+# embedding failure degrades to recency. Needs an embeddings-capable provider
+# (OpenAI / OpenRouter / Ollama; Anthropic has no /embeddings → recency).
+#   embed_model : the embeddings model (default text-embedding-3-small;
+#                 Ollama → nomic-embed-text).
+#   max_vectors : cap on stored lessons-with-embeddings (default 500).
+# memory:
+#   semantic: true
+#   embed_model: text-embedding-3-small
+#   max_vectors: 500
+
 # ── MCP servers (optional) ──────────────────────────────────────────────────────
 # Opt-in external tool servers. Install with `uv sync --extra mcp`, then declare
 # them here; their tools appear like built-ins (prefixed with `name`). stdio

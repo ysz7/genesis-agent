@@ -30,6 +30,12 @@ syncing, since some releases change defaults.
   `output.block` makes a matching answer retry then fail cleanly, `output.redact`
   masks spans in the answer. Ships the seam, not a policy library — no heavy
   dependency. Off by default.
+- **Semantic long-term memory** (`memory.semantic`, Phase 19). With it on,
+  `remember` stores an embedding alongside each lesson and recall ranks them by
+  **relevance** to the current task (cosine similarity) instead of recency —
+  lightweight, no vector database (embeddings via the provider's `/embeddings`
+  endpoint; pure-Python similarity). Any embedding failure degrades to recency;
+  off by default, behaviour unchanged.
 
 ## [0.9.0] — 2026-06-27
 

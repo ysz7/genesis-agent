@@ -389,7 +389,10 @@ self_improvement:
   procedures as markdown under `workspace/skills/`. Not code, so no approval; a
   one-line index is injected into the system prompt and pulled in full on demand.
 - **Memory** — `remember(lesson)` appends to `workspace/memory/lessons.jsonl`; a
-  digest of recent lessons rides in the system prompt next session.
+  digest of recent lessons rides in the system prompt next session. With
+  `memory.semantic` on, lessons are recalled by **relevance** to the current task
+  (embedding + cosine, no vector DB) instead of recency — degrades to recency on
+  any embedding failure.
 - **Tools** — `write_tool` authors a Python tool under `workspace/tools/`. It
   runs **only** after passing checks (syntax → banned-import scan → load + tool
   contract) **and** a human approval. Approvals are three-way (once · always ·
