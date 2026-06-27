@@ -8,6 +8,18 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Added
+- **Persistent conversation threads** (`threads.enabled`, Phase 18). A
+  conversation can survive a restart: it's serialized into the existing state
+  store under a `session_id`. In the REPL, `agent --session work` resumes a named
+  thread, and `/threads` · `/resume <id>` · `/new` manage them; each turn is saved
+  back. The HTTP server gains an optional `POST {"task": ..., "session": "<id>"}`
+  that loads and saves that conversation — **without a session the server stays
+  stateless**, as before. Off by default; threads are capped to `history_keep`
+  and a corrupt/missing blob degrades to a fresh conversation (never a crash).
+
 ## [0.9.0] — 2026-06-27
 
 ### Added

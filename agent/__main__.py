@@ -45,6 +45,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--root", default=None, help="agent folder (default: cwd)")
     parser.add_argument(
+        "--session", default=None, metavar="ID",
+        help="resume a persisted conversation thread by id (REPL only; needs "
+             "threads.enabled in settings.yaml)",
+    )
+    parser.add_argument(
         "--image", action="append", default=None, metavar="PATH_OR_URL",
         help="attach an image/PDF (path or URL); repeatable. One-shot only — "
              "in the REPL just drag a file into the terminal.",
@@ -99,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_mb=max_mb_from(config.settings),
             )
             return _one_shot(agent, prompt, deps, config.model)
-        return _repl(agent, config, deps)
+        return _repl(agent, config, deps, session_id=args.session)
     finally:
         close_deps(deps)
 
@@ -120,7 +125,9 @@ def _one_shot(agent, task, deps, model: str) -> int:
     return 0
 
 
-def _repl(agent, config, deps) -> int:
+def _repl(agent, config, deps, session_id=None) -> int:
+    from .runtime import threads
+
     tools = discover_tools(config)
     display.print_banner(config, tools)
     # Conversation memory: the running transcript fed back on each turn so the
@@ -129,6 +136,18 @@ def _repl(agent, config, deps) -> int:
     # long sessions). One-shot and the server stay stateless by design.
     history: list = []
     keep = int(config.settings.get("history_keep", 40))
+
+    # Persistent threads (Phase 18, opt-in): when threads.enabled and a session
+    # is active, the conversation is loaded at start and saved back each turn, so
+    # it survives a restart. `session` is None = ephemeral (today's behaviour).
+    threads_on = threads.enabled(config.settings)
+    session = session_id if threads_on else None
+    if session_id and not threads_on:
+        display.warn("--session ignored: set threads.enabled: true in settings.yaml")
+    if session:
+        history = threads.load_thread(deps.store, session)
+        display.info(f"resumed thread '{session}' ({len(history)} messages)")
+
     while True:
         try:
             task = input("  \033[1m›\033[0m ").strip()
@@ -140,11 +159,41 @@ def _repl(agent, config, deps) -> int:
         if task in ("/quit", "/exit", "/q"):
             break
         if task == "/help":
-            display.info("Type a task. Commands: /help · /tools · /clear · /reload · /quit")
+            display.info(
+                "Type a task. Commands: /help · /tools · /clear · /reload · "
+                "/threads · /resume <id> · /new · /quit"
+            )
             continue
         if task == "/clear":
             history.clear()
             display.info("conversation history cleared")
+            continue
+        if task == "/threads":
+            if not threads_on:
+                display.info("threads are off — set threads.enabled: true in settings.yaml")
+            else:
+                ids = threads.list_threads(deps.store)
+                cur = f"  (current: {session})" if session else ""
+                display.info(("saved threads: " + ", ".join(ids)) if ids else "no saved threads yet")
+                if cur:
+                    display.info(f"current thread: {session}")
+            continue
+        if task.startswith("/resume"):
+            if not threads_on:
+                display.info("threads are off — set threads.enabled: true in settings.yaml")
+                continue
+            parts = task.split(maxsplit=1)
+            if len(parts) < 2 or not parts[1].strip():
+                display.warn("usage: /resume <id>")
+                continue
+            session = parts[1].strip()
+            history = threads.load_thread(deps.store, session)
+            display.info(f"resumed thread '{session}' ({len(history)} messages)")
+            continue
+        if task == "/new":
+            session = None
+            history.clear()
+            display.info("started a fresh conversation (not persisted — /resume <id> to name it)")
             continue
         if task in ("/reload", "/tools"):
             from .engine.registry import tool_names
@@ -174,6 +223,8 @@ def _repl(agent, config, deps) -> int:
             history.extend(result.new_messages())
             if len(history) > keep:
                 del history[:-keep]
+            if session:                       # persist the thread (Phase 18)
+                threads.save_thread(deps.store, session, history, keep=keep)
             # A tool the agent authored + got approved this turn → hot-reload so
             # it's callable immediately (Phase 11b).
             if deps.extra.pop("reload_pending", False):

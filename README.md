@@ -128,6 +128,9 @@ uv run agent --serve --port 8181                        # HTTP service
 
 In the **REPL**, type a task or a command: `/help` · `/tools` · `/clear`
 (forget the conversation) · `/reload` (pick up newly approved tools) · `/quit`.
+With **persistent threads** on (`threads.enabled`), `agent --session work`
+resumes a saved conversation, and `/threads` · `/resume <id>` · `/new` manage
+them — a thread survives a restart (see [Configuration](#configuration)).
 
 The **HTTP server** binds `127.0.0.1` (localhost only) by default — pass
 `--host 0.0.0.0` to accept remote connections (the Docker image does this). Set
@@ -149,6 +152,11 @@ curl -N "localhost:8181/task/stream?q=list+the+files+here"
 
 Endpoints: `POST /task` · `GET /task?q=...` (browser-friendly) ·
 `GET /task/stream?q=...` (SSE) · `GET /health` (open, no auth).
+
+Each request is **stateless by default**. With `threads.enabled`, a caller can
+pass `POST {"task": ..., "session": "<id>"}` to carry a conversation across
+requests (loaded and saved per `session_id`); omit `session` and it stays
+stateless.
 
 **Multimodal input** (vision-capable models): attach images/PDFs with
 `uv run agent "what's this?" --image photo.png`, by dragging a file into the
@@ -200,6 +208,7 @@ files with the same notes — this is just the consolidated reference.
 | `retries` | `2` | Pydantic AI retries per failed tool/model call |
 | `max_tool_output` | `20000` | char cap on a tool's output (`run_shell`, `fetch_url`, HTML cleaner) |
 | `history_keep` | `40` | REPL messages kept between turns |
+| `threads` | — | `enabled: true` → persist/resume conversations by `session_id` (REPL `--session`; server `{"session": ...}`) |
 | `context_budget` | `100000` | model's usable context (tokens); compaction triggers at ~60% |
 | `compaction` | `enabled: true, keep: 12` | summarize old history past the budget |
 | `limits` | `request_limit: 25` | per-run ceilings (`pydantic_ai.usage.UsageLimits`) |

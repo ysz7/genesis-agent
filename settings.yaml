@@ -30,8 +30,19 @@ store: state.json
 # REPL turns kept between prompts (older messages dropped). Default: 40.
 #   cloud models            : 40
 #   small local contexts    : 10-15
-# One-shot runs and the HTTP server are stateless regardless; /clear forgets it.
+# One-shot runs and the HTTP server are stateless by default; /clear forgets it.
 history_keep: 40
+
+# Persistent conversation threads (optional). OFF by default: the REPL forgets a
+# conversation on exit. Turn this on and a conversation can be saved/resumed by
+# id, surviving a restart — it's stored in the same `store` under `thread:<id>`.
+#   REPL  : `agent --session work` resumes thread "work"; in-REPL use
+#           /threads, /resume <id>, /new (a fresh, unnamed conversation).
+#   server: POST {"task": ..., "session": "<id>"} loads + saves that thread;
+#           without a session the server stays stateless.
+# Capped to history_keep messages so a thread stays lean on disk.
+# threads:
+#   enabled: true
 
 # Your model's usable context window, in tokens — auto-compaction triggers at
 # ~60% of this (older history is summarized, not truncated, so early facts

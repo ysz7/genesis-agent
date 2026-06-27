@@ -20,10 +20,12 @@ per request; each handler submits its coroutine to the shared loop with
 ``deps`` is lock-guarded). A per-task ``serve_timeout`` (settings, default 300s)
 caps runaway model calls with a ``504``.
 
-Each request is **stateless by design**: unlike the REPL (which threads a running
+Each request is **stateless by default**: unlike the REPL (which threads a running
 conversation via ``message_history``), every HTTP task runs independently with no
 memory of prior requests. A caller that wants continuity sends the context in the
-task itself.
+task itself — or, when ``threads.enabled`` (Phase 18), passes
+``{"task": ..., "session": "<id>"}`` to load and save a persisted conversation
+across requests (the default, no ``session``, stays stateless).
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
+from ..runtime import threads
 from ..runtime.runlog import append_run
 from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
@@ -177,7 +180,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 task, data.get("images") or [], allow_local=False,
                 max_mb=max_mb_from(config.settings),
             )
-            self._handle_task(prompt)
+            # Optional persistent thread (Phase 18): a caller may pass a session
+            # id to carry a conversation across requests. Stateless without it.
+            self._handle_task(prompt, session=data.get("session"))
 
         def _read_body(self) -> bytes | None:
             """Read the request body, enforcing the size limit. None on error sent."""
@@ -195,18 +200,25 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 return None
             return self.rfile.read(length) if length else b"{}"
 
-        def _handle_task(self, task) -> None:
+        def _handle_task(self, task, session=None) -> None:
             self._detailed = True            # use the detailed monitor feed
             deps.extra.pop("plan", None)     # per-request todo scratchpad (Phase 13)
             task_text = prompt_text(task)    # text form for monitor/log (not bytes)
             start = time.monotonic()
             if monitor:
                 monitor.on_request(task_text, self.client_address[0])
+            # Persistent thread (Phase 18): load prior history when a session id is
+            # given AND threads are enabled; otherwise the request is stateless.
+            use_thread = bool(session) and threads.enabled(config.settings)
+            history = threads.load_thread(deps.store, session) if use_thread else []
             # Run the agent and send the response as SEPARATE steps: a failure to
             # deliver (client closed the tab) must not mislabel a task that ran
             # fine, nor trigger a second send onto a dead socket.
             try:
-                result = _submit(agent.run(task, deps=deps, usage_limits=config.usage_limits))
+                result = _submit(agent.run(
+                    task, deps=deps, message_history=history or None,
+                    usage_limits=config.usage_limits,
+                ))
             except (asyncio.TimeoutError, TimeoutError):
                 elapsed = time.monotonic() - start
                 if monitor:
@@ -225,6 +237,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             if monitor:
                 monitor.on_result(True, _tokens(result), elapsed)
             append_run(deps, task_text, elapsed, _tokens(result), ok=True)
+            if use_thread:                   # persist the updated conversation
+                keep = int(config.settings.get("history_keep", 40))
+                threads.save_thread(deps.store, session, result.all_messages(), keep=keep)
             self._send(200, {"output": _jsonable(result.output)})
 
         def _handle_stream(self, task: str) -> None:
