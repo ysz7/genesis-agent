@@ -101,6 +101,55 @@ cd genesis-agent
   local JSONL run log, and an opt-in `pydantic-evals` harness for your vertical.
 - **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
 
+## What's installed & on by default
+
+**The base `uv sync` installs everything needed for all core features** — memory,
+compaction, planning, subagents, self-improvement, threads, guardrails, model
+fallback, semantic memory, the server, multimodal, Docker/cron. Only four
+**optional packages** are opt-in:
+
+| Extra | Adds | Install |
+|-------|------|---------|
+| `mcp` | external [MCP](#mcp-servers-optional) tool servers | `uv sync --extra mcp` |
+| `obs` | [Logfire](#observability-optional) tracing | `uv sync --extra obs` |
+| `evals` | the [eval harness](#evaluating-your-vertical-optional) | `uv sync --extra evals` |
+| `pg` | the [Postgres + pgvector example](examples/pg_support/) | `uv sync --extra pg` |
+
+Behaviourally, a **fresh copy ships with the "agentic" capabilities on** and
+everything that costs money/latency or changes a contract **off** (one line to
+enable). Every `settings.yaml` key:
+
+| Setting | What it does | Default |
+|---------|--------------|---------|
+| `name` | display name | ✅ on (folder name) |
+| `store` | cross-run state file (JSON / SQLite) | ✅ on (`state.json`) |
+| `workspace` | sandbox + state directory | ✅ on (`workspace`) |
+| `history_keep` | REPL turns kept between prompts | ✅ on (`40`) |
+| `threads` | persist / resume conversations by id | ⬜ off |
+| `context_budget` | usable context window; compaction trigger | ✅ on (`100000`) |
+| `compaction` | summarize old history past the budget | ✅ on |
+| `max_tool_output` | char cap on one tool's output | ✅ on (`20000`) |
+| `limits` | per-run request / token ceilings | ✅ on (`request_limit 25`) |
+| `retries` | retries per failed tool / model call | ✅ on (`2`) |
+| `model_settings` | `temperature` / `max_tokens` / `timeout` | ⬜ off (provider defaults) |
+| `model_fallbacks` | backup models retried on a transient failure | ⬜ off |
+| `sandbox` | confine file tools to `workspace/` | ✅ on (code default `true`) |
+| `tools` | `disable` / `confirm` tool policy | ⬜ off (no policy) |
+| `guardrails` | regex `input` / `output` `block` / `redact` | ⬜ off |
+| `serve_timeout` | per-task wall-clock for `--serve` (→ 504) | ✅ on (`300`) |
+| `prompt_caching` | reuse the provider's prompt cache | ⬜ off |
+| `attachments` | image / PDF input (multimodal); `max_mb` caps size | ✅ on (cap `10`MB) |
+| `planning` | `update_plan` todo scratchpad | ✅ on |
+| `subagents` | `delegate` / `delegate_to` + named-agent authoring | ✅ on |
+| `self_improvement` | author skills / tools / lessons (tools need approval) | ✅ on |
+| `memory_recall` | recent lessons injected into the prompt | ✅ on (`5`) |
+| `generated_tools` | generated-tool timeout / banned imports | ✅ on (defaults) |
+| `approvals` | headless: honor persisted "always allow" grants | ⬜ off (deny) |
+| `memory` | `semantic: true` → relevance recall via embeddings | ⬜ off (recency) |
+| `mcp` | external MCP tool servers (also needs `--extra mcp`) | ⬜ off |
+
+Legend: ✅ active out of the box · ⬜ opt-in (commented out in the template).
+
 ## Usage
 
 **`start.cmd`** / **`./start.sh`** opens an arrow-key start menu: Chat ·
