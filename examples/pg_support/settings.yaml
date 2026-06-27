@@ -1,0 +1,14 @@
+# Postgres + pgvector support agent — vertical config
+name: pg-support
+store: state.json          # genesis KV store (small per-run state); the domain
+                           # data lives in Postgres, reached via the tools
+
+# Embedding model used by search_kb / add_kb_article. Must match the vector()
+# dimension in schema.sql (text-embedding-3-small → 1536).
+#   OpenAI : text-embedding-3-small
+#   Ollama : nomic-embed-text   (then set vector(768) in schema.sql)
+embed_model: text-embedding-3-small
+
+# Agentic helpers — useful for a multi-step support flow.
+planning:
+  enabled: true

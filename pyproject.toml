@@ -19,6 +19,9 @@ mcp = ["mcp>=1.0"]
 obs = ["logfire>=3.0"]
 # Opt-in: eval harness for your vertical. Install with:  uv sync --extra evals
 evals = ["pydantic-evals>=1.0"]
+# Opt-in: Postgres + pgvector (the examples/pg_support vertical). Install with:
+#   uv sync --extra pg
+pg = ["psycopg[binary]>=3.1"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

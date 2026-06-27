@@ -166,9 +166,12 @@ Then refine it:
    the http client / store / settings.
 3. Run **`start.cmd`** / `./start.sh`.
 
-A fully filled-in vertical lives in
-[`examples/rss_research/`](examples/rss_research/) — drop-in tool,
-settings-driven feeds, store-based dedup, structured output.
+Filled-in verticals to copy from:
+- [`examples/rss_research/`](examples/rss_research/) — drop-in tool,
+  settings-driven feeds, store-based dedup, structured output.
+- [`examples/pg_support/`](examples/pg_support/) — a real **Postgres + pgvector**
+  database (relational tickets *and* vector knowledge base in one instance),
+  wired in with zero engine changes.
 
 ## Configuration
 
