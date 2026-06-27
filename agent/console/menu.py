@@ -320,6 +320,63 @@ def _serve(root) -> None:
     monitor.print_stats()                            # closing summary on the way out
 
 
+def _subagents(root) -> None:
+    """Read-only roster of the named subagents in ``workspace/agents/``.
+
+    Lists every ``<name>.md`` definition; Enter on one shows its full persona +
+    frontmatter. Viewing only — the agent authors subagents with ``write_agent``,
+    or you edit the files directly. Still works when delegation is opted out
+    (``subagents.enabled: false``), so you can review a roster before re-enabling.
+    """
+    from ..runtime.config import load_config
+    from ..tools.subagents import load_specs
+
+    config = load_config(root)
+    enabled = bool((config.settings.get("subagents") or {}).get("enabled"))
+
+    while True:
+        specs = load_specs(config.workspace)
+        if not specs:
+            select(
+                "Subagents  —  workspace/agents/",
+                ["Back"],
+                subtitle="no subagents yet — add workspace/agents/<name>.md or ask the agent to create one",
+            )
+            return
+        note = f"{len(specs)} subagent(s)" + (
+            "" if enabled else "   ·   delegation OFF — set subagents.enabled: true in settings.yaml"
+        )
+        options = [f"{s.name}  ·  {_clip(s.description, 48)}" for s in specs] + ["Back"]
+        choice = select("Subagents  —  workspace/agents/", options, subtitle=note)
+        if choice is None or choice >= len(specs):
+            return
+        _show_subagent(specs[choice], enabled)
+
+
+def _show_subagent(spec, enabled: bool) -> None:
+    """Render one subagent definition, then wait for Enter."""
+    _clear()
+    tools = (
+        f"allow: {', '.join(spec.allow)}" if spec.allow
+        else f"deny: {', '.join(spec.deny)}" if spec.deny
+        else "inherits the parent's tools"
+    )
+    body = (
+        f"[bold {EMERALD}]{spec.name}[/]\n"
+        f"[dim]{spec.description or '(no description)'}[/]\n\n"
+        f"[dim]tools:[/] {tools}\n"
+        f"[dim]model:[/] {spec.model or 'inherits the parent model'}\n"
+        f"[dim]call:[/]  delegate_to(\"{spec.name}\", task)"
+        + ("" if enabled else "   [dim](delegation is off)[/]")
+        + f"\n\n[dim]── persona ──[/]\n{spec.persona}"
+    )
+    console.print(Panel(body, border_style=EMERALD, title="[dim]subagent[/]"))
+    try:
+        input("\n  press Enter to return…")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _check_updates(root) -> None:
     """Read-only: compare the local version against the newest tag on GitHub."""
     from ..runtime import updates
@@ -618,6 +675,7 @@ def run(root: str | None = None) -> int:
             [
                 "Chat with the agent",
                 "Scheduler",
+                "Subagents",
                 "Settings",
                 "Serve (HTTP + live monitor)",
                 "Create a new agent",
@@ -631,14 +689,16 @@ def run(root: str | None = None) -> int:
         elif choice == 1:
             _scheduler(root)
         elif choice == 2:
-            _settings(root_path)
+            _subagents(root_path)
         elif choice == 3:
-            _serve(root)
+            _settings(root_path)
         elif choice == 4:
+            _serve(root)
+        elif choice == 5:
             from . import wizard
 
             wizard.run_wizard(root)
-        elif choice == 5:
+        elif choice == 6:
             _check_updates(root_path)
         else:
             _clear()

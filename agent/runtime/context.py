@@ -50,6 +50,7 @@ class AgentDeps:
     #   files/   ordinary task outputs (write_file's default target)
     #   tools/   agent-written Python tools (run only after approval)
     #   skills/  agent-written markdown procedures
+    #   agents/  named subagent definitions (markdown + frontmatter)
     #   memory/  reflection notes (lessons.jsonl)
     # plus approvals.json (persisted "always allow" grants). Each accessor
     # creates its directory lazily, so a fresh workspace stays empty until used.
@@ -70,6 +71,10 @@ class AgentDeps:
     @property
     def skills_dir(self) -> Path:
         return self._subdir("skills")
+
+    @property
+    def agents_dir(self) -> Path:
+        return self._subdir("agents")
 
     @property
     def memory_dir(self) -> Path:

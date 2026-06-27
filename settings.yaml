@@ -137,11 +137,11 @@ retries: 2
 # ── Planning (optional) ─────────────────────────────────────────────────────────
 # Gives the agent `update_plan` — a short todo checklist it keeps up to date on
 # multi-step tasks. The current plan is shown to the model each turn and rendered
-# in the console. It's a scratchpad, not enforced control flow. OFF by default,
-# but cheap — recommended ON for agentic, multi-step verticals; little point for
+# in the console. It's a scratchpad, not enforced control flow. ON by default
+# (cheap, recommended for agentic multi-step verticals); set enabled: false for
 # simple one-shot Q&A.
-# planning:
-#   enabled: true
+planning:
+  enabled: true
 
 # ── Subagents / delegation (optional) ────────────────────────────────────────────
 # Gives the agent `delegate(task)` — run a fresh sub-agent on an isolated subtask
@@ -149,10 +149,21 @@ retries: 2
 # splitting a big job. Sub-agents share state (store/workspace) but not history,
 # never get `write_tool`, and their token cost folds into the parent's budget.
 # max_depth caps nesting (1 = the top agent may delegate, sub-agents may not —
-# prevents runaway fork bombs). OFF by default.
-# subagents:
-#   enabled: true
-#   max_depth: 1
+# prevents runaway fork bombs). ON by default; set enabled: false to opt out.
+#
+# NAMED subagents: drop a markdown file in workspace/agents/<name>.md (frontmatter
+# `description:` + optional `tools: {allow: [...]}` / `{deny: [...]}` + optional
+# `model:` (same provider, e.g. a cheaper model), body = its persona) and the
+# agent delegates to it by name with `delegate_to(name, task)`.
+# allow_authoring (default true) also lets the agent CREATE such files itself via
+# `write_agent` — creating a new one is free (markdown, like write_skill), but
+# UPDATING an existing subagent asks for approval (once/always/deny) so a
+# relied-upon specialist isn't silently changed. Set allow_authoring: false for
+# a fixed, human-curated roster.
+subagents:
+  enabled: true
+  max_depth: 1
+  allow_authoring: true
 
 # ── Self-improvement (optional) ─────────────────────────────────────────────────
 # Lets the agent extend itself, all sandboxed to workspace/. OFF by default — a

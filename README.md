@@ -88,6 +88,9 @@ cd genesis-agent
   localhost and accepts an optional bearer token.
 - **Bounded & tunable** — per-run usage limits (request/token caps) and model
   settings (temperature, `max_tokens`, …) straight from `settings.yaml`.
+- **Built for multi-step work** — a live `update_plan` checklist and `delegate`
+  to fresh, isolated sub-agents keep long tasks on track without bloating context
+  (both on by default; see [Planning & delegation](#planning--delegation)).
 - **Headless HTTP mode** (`--serve`, zero extra deps) with **SSE streaming**,
   **optional [MCP](https://modelcontextprotocol.io) servers**, **Docker-ready**.
 - **Observable** — optional [Logfire](https://logfire.pydantic.dev) tracing, a
@@ -200,6 +203,9 @@ files with the same notes — this is just the consolidated reference.
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
 | `prompt_caching` | `false` | reuse the provider's prompt cache (Anthropic: tool defs) |
+| `planning` | `enabled: true` | `update_plan` todo checklist, shown each turn ([§](#planning--delegation)) |
+| `subagents` | `enabled: true` | `delegate(task)` to isolated sub-agents; `max_depth` caps nesting ([§](#planning--delegation)) |
+| `self_improvement` | `enabled: true` | agent authors skills / tools / memory ([§](#self-improvement-optional)) |
 | `mcp` | — | external [MCP](#mcp-servers-optional) servers |
 
 The tool policy is the key safety lever: `fetch_url` content is
@@ -291,15 +297,74 @@ uv run python evals/example_eval.py
 against the live agent. Swap in your own cases and evaluators. The core never
 imports `pydantic_evals`.
 
+## Planning & delegation
+
+Two agentic capabilities, shipped **on by default** (set `enabled: false` to opt
+out):
+
+- **Planning** (`planning`) — `update_plan(steps)` gives the agent a visible todo
+  checklist it keeps current across turns. The plan is injected into the system
+  prompt each turn and rendered in the console as a `○ / ▸ / ✓` tree. It's a
+  scratchpad, not enforced control flow — cheap, and worth it on any multi-step
+  task.
+- **Subagents / delegation** (`subagents`) — `delegate(task)` runs a fresh
+  sub-agent on an isolated subtask (clean context, no message history) and returns
+  just its final answer, so the parent's context stays lean. Use it for focused
+  lookups or to split a big job into parts (call it several times). Sub-agents
+  share state (store / workspace / http) but **not** history, never receive
+  `write_tool`, and their token cost folds into the parent's usage budget so
+  limits stay honest. `max_depth` (default `1`) caps nesting — the top agent may
+  delegate, sub-agents may not, so there are no runaway fork-bombs.
+
+**Named, specialized subagents.** Beyond the anonymous `delegate`, you can give
+the agent a roster of named specialists — each its own persona and tool allowance
+— and it picks the right one by description with `delegate_to(name, task)`. A
+subagent is a markdown file, `workspace/agents/<name>.md`:
+
+```markdown
+---
+description: Researches a topic from primary sources and returns a 3-bullet brief.
+tools:
+  allow: [fetch_url, read_file, write_file]   # omit to inherit the parent's tools
+model: gpt-4o-mini                            # optional — same provider, cheaper/stronger model
+---
+You are a meticulous research sub-agent. Fetch primary sources, cross-check, and
+return a tight brief with links.
+```
+
+There are three ways one comes to exist, all the same file: the **agent authors
+one itself** mid-task, **you ask it to** in chat ("make me a code-reviewer
+agent"), or **you write the file by hand**. The first two use `write_agent`
+(gated by `subagents.allow_authoring`, on by default) — markdown only: creating
+a new subagent is free, like `write_skill`, while **improving an existing one
+asks for approval** (once · always · deny) so a relied-upon specialist isn't
+silently changed. The roster is shown in the start menu's
+**Subagents** screen and injected into the agent's prompt so it knows who it can
+delegate to. A subagent's `tools.allow` / `deny` can only *narrow* the parent's
+policy, never widen it; an optional `model:` routes it to a different model id on
+the same provider (e.g. a cheap model for a simple specialist).
+
+```yaml
+# settings.yaml
+planning:
+  enabled: true
+subagents:
+  enabled: true
+  max_depth: 1            # how deep delegation may nest
+  allow_authoring: true   # false = fixed, human-curated roster (agent can't write_agent)
+```
+
 ## Self-improvement (optional)
 
-Off by default. Enable it and the agent gets tools to extend itself, all
-sandboxed to `workspace/`:
+**On by default** — the agent gets tools to extend itself, all sandboxed to
+`workspace/`. Self-authored *tools* still never run until a human approves them
+(below), so the safety boundary holds; set `enabled: false` to remove the
+authoring tools entirely.
 
 ```yaml
 # settings.yaml
 self_improvement:
-  enabled: true
+  enabled: true     # set false to opt out
 ```
 
 - **Skills** (the primary path) — `write_skill` / `read_skill` save reusable
@@ -380,6 +445,7 @@ genesis-agent/
 ├── workspace/              runtime sandbox (created on first run):
 │   ├── files/              task outputs (write_file default)
 │   ├── tools/ · skills/    agent-authored, approved tools + skills (opt-in)
+│   ├── agents/             named subagent definitions (markdown)
 │   └── memory/             reflection lessons
 ├── examples/               filled-in verticals to copy from
 ├── evals/                  copyable pydantic-evals harness (opt-in)

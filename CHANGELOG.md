@@ -8,6 +8,33 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [0.9.0] — 2026-06-27
+
+### Added
+- **Named, specialized subagents** (`delegate_to`, Phase 17). Beyond the
+  anonymous `delegate`, the agent can keep a roster of named specialists — each
+  a `workspace/agents/<name>.md` file with its own persona and tool allowance —
+  and pick one by description with `delegate_to(name, task)`. Three ways a
+  subagent is created, all the same file: the agent authors one with
+  `write_agent` (markdown only — creating a new one is free, like `write_skill`;
+  *updating* an existing one asks for human approval), you ask it to in chat, or
+  you write the file by hand. A new read-only **Subagents** item in
+  the start menu lists the roster. A subagent's `tools.allow` / `deny` can only
+  narrow the parent's policy; sub-agents never get `write_tool` / `write_agent`;
+  the existing depth guard and usage-folding apply unchanged. A subagent may set
+  an optional `model:` to run on a different model id on the same provider (e.g.
+  a cheaper model for a simple specialist).
+
+### Changed
+- **`planning`, `subagents`, and `self_improvement` now default to `enabled:
+  true`** in the template `settings.yaml` (set each `enabled: false` to opt out).
+  Self-authored *tools* still require human approval, so the safety boundary is
+  unchanged. `subagents.allow_authoring` (default `true`) gates the `write_agent`
+  authoring tool; set it `false` for a fixed, human-curated roster.
+- README documents Planning, Subagents/delegation (including named subagents and
+  the three creation paths), and the previously-undocumented `planning` /
+  `subagents` / `self_improvement` settings keys.
+
 ## [0.8.0] — 2026-06-15
 
 Onboarding and polish — a guided first run, a cleaner console, a refreshed site.

@@ -8,6 +8,7 @@ without changing this signature.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from datetime import datetime
@@ -57,6 +58,8 @@ def build_agent(
     output_type: Any | None = None,
     *,
     exclude_tools: set[str] | None = None,
+    persona_override: str | None = None,
+    model_override: str | None = None,
 ) -> Agent:
     """Compose ``Agent(model, system_prompt, deps_type, output_type, tools)``.
 
@@ -66,13 +69,19 @@ def build_agent(
             the agent returns plain text.
         exclude_tools: Tool names to leave out of this build — used to construct
             a restricted sub-agent (Phase 14 delegation).
+        persona_override: Replace ``config.persona`` as the static system prompt —
+            used to build a *named* sub-agent with its own persona (Phase 17).
+        model_override: Swap the model id (same provider/key) — lets a named
+            sub-agent run on a cheaper/stronger model (Phase 17f).
     """
     _setup_observability()
+    if model_override:
+        config = dataclasses.replace(config, model=model_override)
     model = build_model(config)
     tools = discover_tools(config, exclude=exclude_tools)
 
     kwargs: dict[str, Any] = {
-        "system_prompt": config.persona,
+        "system_prompt": persona_override or config.persona,
         "deps_type": AgentDeps,
         "tools": tools,
         "retries": int(config.settings.get("retries", 2)),
@@ -116,6 +125,20 @@ def build_agent(
         @agent.system_prompt
         def _plan(ctx: RunContext[AgentDeps]) -> str:
             return plan_overview(ctx.deps)
+
+    # Subagent roster (Phase 17): surface the named subagents in workspace/agents/
+    # so the top agent knows who it can delegate_to. Depth-aware — a sub-agent
+    # (delegation_depth > 0) is shown nothing, so the roster doesn't recurse.
+    if (config.settings.get("subagents") or {}).get("enabled"):
+        from ..tools.subagents import agents_overview
+
+        workspace = config.workspace
+
+        @agent.system_prompt
+        def _subagent_roster(ctx: RunContext[AgentDeps]) -> str:
+            if int(ctx.deps.extra.get("delegation_depth", 0)) > 0:
+                return ""
+            return agents_overview(workspace)
 
     # Self-improvement context (Phase 11): surface the skill index and a digest
     # of recent lessons so the model knows what it has already learned/written.

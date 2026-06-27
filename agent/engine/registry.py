@@ -111,11 +111,18 @@ def discover_tools(config: Config, exclude: set[str] | None = None) -> list[Call
 
         tools.extend(PLANNING_TOOLS)
 
-    # Subagents (Phase 14): an opt-in delegation tool.
-    if (config.settings.get("subagents") or {}).get("enabled"):
+    # Subagents (Phase 14 + 17): opt-in delegation + named-agent authoring.
+    sub = config.settings.get("subagents") or {}
+    if sub.get("enabled"):
         from ..tools.subagents import SUBAGENT_TOOLS
 
         tools.extend(SUBAGENT_TOOLS)
+        # Authoring writes markdown only (no code), so it's on by default like
+        # write_skill; set subagents.allow_authoring: false for a fixed roster.
+        if sub.get("allow_authoring", True):
+            from ..tools.subagents import AUTHORING_TOOLS
+
+            tools.extend(AUTHORING_TOOLS)
 
     # Self-improvement (Phase 11): the agent's own authoring tools, plus any
     # generated tools it has written AND a human has approved. Opt-in, and
