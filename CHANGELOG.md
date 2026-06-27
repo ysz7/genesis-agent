@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.0.0] — 2026-06-27
 
 ### Added
 - **Persistent conversation threads** (`threads.enabled`, Phase 18). A
