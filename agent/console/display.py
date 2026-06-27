@@ -81,6 +81,9 @@ def print_banner(config: Config, tools: list) -> None:
     left.add_row("agent", f"[bold]{config.agent_name}[/]")
     left.add_row("provider", f"[{EMERALD}]{config.provider}[/]")
     left.add_row("model", config.model)
+    fallbacks = config.settings.get("model_fallbacks") or []
+    if fallbacks:
+        left.add_row("fallback", f"[dim]{', '.join(str(m) for m in fallbacks)}[/]")
     left.add_row("api", f"{dot} {'ok' if api_ok else 'missing key'}")
     left.add_row("workspace", f"[dim]{_short(config.workspace)}[/]")
     if config.model_settings:

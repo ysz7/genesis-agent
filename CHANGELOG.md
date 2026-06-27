@@ -19,6 +19,11 @@ syncing, since some releases change defaults.
   that loads and saves that conversation — **without a session the server stays
   stateless**, as before. Off by default; threads are capped to `history_keep`
   and a corrupt/missing blob degrades to a fresh conversation (never a crash).
+- **Model fallback** (`model_fallbacks`, Phase 20). Set a list of backup model
+  ids and a transient primary failure (HTTP error, rate-limit, outage) retries
+  the next one transparently — same provider/key, wrapped in Pydantic AI's
+  `FallbackModel`. For availability, not bad output; shown in the startup banner.
+  Unset = single model, unchanged.
 
 ## [0.9.0] — 2026-06-27
 

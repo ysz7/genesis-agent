@@ -18,12 +18,33 @@ from ..runtime.config import Config
 
 
 def build_model(config: Config) -> Model:
-    """Map a loaded :class:`Config` to a concrete Pydantic AI ``Model``."""
+    """Map a loaded :class:`Config` to a concrete Pydantic AI ``Model``.
+
+    With ``model_fallbacks: [id, ...]`` set in ``settings.yaml`` (Phase 20), the
+    primary model is wrapped in a Pydantic AI ``FallbackModel``: a transient
+    provider failure (HTTP error / rate-limit / outage) transparently retries the
+    next model id, same provider/key. Without it, the bare primary is returned —
+    behaviour is byte-identical to before.
+    """
+    primary = _build_one(config, config.model)
+
+    fallbacks = config.settings.get("model_fallbacks") or []
+    if not fallbacks:
+        return primary
+
+    from pydantic_ai.models.fallback import FallbackModel
+
+    models = [primary] + [_build_one(config, str(m)) for m in fallbacks]
+    return FallbackModel(*models)
+
+
+def _build_one(config: Config, model_id: str) -> Model:
+    """Build a single concrete model for *model_id* on the configured provider."""
     provider = config.provider
 
     if provider == "anthropic":
         return AnthropicModel(
-            config.model,
+            model_id,
             provider=AnthropicProvider(api_key=config.api_key or ""),
         )
 
@@ -32,7 +53,7 @@ def build_model(config: Config) -> Model:
         kwargs: dict = {"api_key": config.api_key or "not-needed"}
         if config.base_url:
             kwargs["base_url"] = config.base_url
-        return OpenAIChatModel(config.model, provider=OpenAIProvider(**kwargs))
+        return OpenAIChatModel(model_id, provider=OpenAIProvider(**kwargs))
 
     raise ValueError(
         f"Unknown PROVIDER={provider!r}. Use one of: "

@@ -101,6 +101,14 @@ retries: 2
 #   max_tokens: 2048
 #   timeout: 60
 
+# Model fallback (optional). A list of backup model ids on the SAME provider/key:
+# if the primary model fails for a transient reason (HTTP error, rate-limit,
+# outage), the run transparently retries the next one. For availability, not bad
+# output. Unset = no fallback (single model, as before). Shown in the banner.
+#   openai   : model_fallbacks: [gpt-4o]
+#   anthropic: model_fallbacks: [claude-sonnet-4-6]
+# model_fallbacks: []
+
 # ── Sandbox & tools ─────────────────────────────────────────────────────────────
 # Control what the agent can touch.
 

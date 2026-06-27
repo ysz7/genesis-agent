@@ -213,6 +213,7 @@ files with the same notes — this is just the consolidated reference.
 | `compaction` | `enabled: true, keep: 12` | summarize old history past the budget |
 | `limits` | `request_limit: 25` | per-run ceilings (`pydantic_ai.usage.UsageLimits`) |
 | `model_settings` | — | `temperature`, `max_tokens`, `timeout`, … passed to the model |
+| `model_fallbacks` | — | backup model ids (same provider) retried on a transient primary failure |
 | `sandbox` | `true` | confine file tools to `workspace/`; `false` to allow any path |
 | `tools` | — | `disable: [...]` (never registered) · `confirm: [...]` (human y/N) |
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
