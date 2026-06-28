@@ -8,6 +8,44 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [1.0.1] — 2026-06-28
+
+CLI / REPL polish — a `prompt_toolkit`-powered prompt, file & document
+attachments, Markdown answers, and fixes to paste / emoji handling.
+
+### Added
+- **REPL line editing via `prompt_toolkit`** (new core dependency, used only by
+  the CLI — the server stays rich/pt-free). The interactive prompt now supports
+  **correct multi-line paste** (cross-platform, including the Windows console) —
+  a multi-line paste collapses to a `[Pasted text +N lines]` placeholder so it
+  doesn't flood the screen, expanded back on submit (Backspace/Delete remove the
+  whole placeholder atomically) — plus **command history**
+  (↑/↓, persisted to `workspace/.repl_history`) and proper line editing. The rich
+  output (reasoning tree, panels, stats) is unchanged — only the input line is
+  read differently. Ctrl+C cancels the current line; Ctrl+D or `/quit` exits.
+- **Attach files & documents in chat** — `/attach <path>` (repeatable) sends a
+  file with your next message: images/PDF go to the model as multimodal parts
+  (vision models), and text documents (code, `.md`, `.csv`, `.json`, …) are read
+  and inlined into the prompt so they work on any model. **Dragging a file into
+  the terminal** collapses its path to a `[file: name]` chip (instead of a long
+  raw path), removed atomically with one Backspace — same as the paste placeholder.
+
+### Fixed
+- The CLI now renders the agent's final answer as **Markdown** (bold, lists,
+  `code`, headings) instead of printing raw syntax like `**bold**`. Falls back to
+  plain text if rendering fails; set `render_markdown: false` for verbatim output.
+  (Server/JSON output is unchanged — raw text.)
+- **Pasting a long / multi-line message into the REPL** no longer truncates it or
+  leaks the remaining lines into later prompts (the earlier symptom where pasted
+  tails appeared as later prompts and a single Ctrl+C couldn't catch up). The
+  `prompt_toolkit` reader takes the whole paste as one input.
+- **Pasting/typing emoji in the REPL no longer crashes** with a "surrogates not
+  allowed" UTF-8 error. On Windows, non-BMP characters arrive as lone UTF-16
+  surrogate halves; they're now recombined before the text is used or written to
+  history.
+- **REPL output spacing** — a blank line now separates your input (and the
+  `attached:` line) from the reasoning tree, so it no longer looks crammed.
+
 ## [1.0.0] — 2026-06-27
 
 ### Added
@@ -36,12 +74,6 @@ syncing, since some releases change defaults.
   lightweight, no vector database (embeddings via the provider's `/embeddings`
   endpoint; pure-Python similarity). Any embedding failure degrades to recency;
   off by default, behaviour unchanged.
-
-### Fixed
-- The CLI now renders the agent's final answer as **Markdown** (bold, lists,
-  `code`, headings) instead of printing raw syntax like `**bold**`. Falls back to
-  plain text if rendering fails; set `render_markdown: false` for verbatim output.
-  (Server/JSON output is unchanged — raw text.)
 
 ## [0.9.0] — 2026-06-27
 

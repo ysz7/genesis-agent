@@ -131,6 +131,11 @@ def _one_shot(agent, task, deps, model: str) -> int:
     return 0
 
 
+def _attach_name(val) -> str:
+    """Display name for a pending attachment ((name, body) text doc, or a path)."""
+    return val[0] if isinstance(val, tuple) else Path(val).name
+
+
 def _repl(agent, config, deps, session_id=None) -> int:
     from .runtime import threads
 
@@ -154,10 +159,23 @@ def _repl(agent, config, deps, session_id=None) -> int:
         history = threads.load_thread(deps.store, session)
         display.info(f"resumed thread '{session}' ({len(history)} messages)")
 
+    # prompt_toolkit input: correct multi-line paste, ↑/↓ history, line editing
+    # (cross-platform). Falls back to input() when unavailable / not a TTY.
+    pt = display.new_prompt_session(deps.workspace)
+    return _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, pt)
+
+
+def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, pt) -> int:
+    from .runtime import threads
+    from .runtime.attachments import classify_attachment, inline_text_docs
+
+    pending: list[tuple[str, object]] = []   # /attach'd files for the next message
     while True:
         try:
-            task = input("  \033[1m›\033[0m ").strip()
-        except (EOFError, KeyboardInterrupt):
+            task = display.read_line(pt, "  \033[1m›\033[0m ").strip()
+        except KeyboardInterrupt:            # Ctrl+C cancels the current line
+            continue
+        except EOFError:                     # Ctrl+D exits
             print()
             break
         if not task:
@@ -167,8 +185,28 @@ def _repl(agent, config, deps, session_id=None) -> int:
         if task == "/help":
             display.info(
                 "Type a task. Commands: /help · /tools · /clear · /reload · "
-                "/threads · /resume <id> · /new · /quit"
+                "/attach <path> · /threads · /resume <id> · /new · /quit"
             )
+            display.info(
+                "Attach files: /attach <path> (images/PDF for vision models; text "
+                "docs are inlined) — or just drag a file into the terminal."
+            )
+            continue
+        if task.startswith("/attach"):
+            arg = task[len("/attach"):].strip()
+            if not arg:
+                if pending:
+                    names = ", ".join(_attach_name(v) for _, v in pending)
+                    display.info(f"pending attachments: {names}")
+                else:
+                    display.info("usage: /attach <path>  (file to send with your next message)")
+                continue
+            kind, val = classify_attachment(arg, max_mb_from(config.settings))
+            if kind == "error":
+                display.warn(f"attach failed: {val}")
+            else:
+                pending.append((kind, val))
+                display.info(f"attached: {_attach_name(val)}  ({len(pending)} pending)")
             continue
         if task == "/clear":
             history.clear()
@@ -218,16 +256,32 @@ def _repl(agent, config, deps, session_id=None) -> int:
         if not allowed:
             display.warn(task)
             continue
-        # Drag a file into the terminal → it arrives as a path; attach it.
-        clean, attached = extract_attachments(task)
-        if attached:
-            display.info("📎 attached: " + ", ".join(Path(a).name for a in attached))
+        # Attachments: files dropped into the line (collapsed to a chip, expanded
+        # back here) + any /attach'd this turn. Each is classified: image/PDF →
+        # multimodal part (vision), text doc → inlined into the prompt.
+        clean, dragged = extract_attachments(task)
+        media: list[str] = []
+        docs: list[tuple[str, str]] = []
+        for kind, val in pending:
+            (media.append(val) if kind == "media" else docs.append(val))
+        pending.clear()
+        for p in dragged:
+            kind, val = classify_attachment(p, max_mb_from(config.settings))
+            if kind == "media":
+                media.append(val)
+            elif kind == "text":
+                docs.append(val)
+        if dragged:
+            display.info("attached: " + ", ".join(Path(a).name for a in dragged))
+        base = clean if dragged else task
+        task_text = inline_text_docs(base, docs)
+        if media:
             prompt = build_user_prompt(
-                clean or "(see attached)", attached, allow_local=True,
+                task_text or "(see attached)", media, allow_local=True,
                 max_mb=max_mb_from(config.settings),
             )
         else:
-            prompt = task
+            prompt = task_text
         try:
             result = asyncio.run(
                 display.run_streamed(agent, prompt, deps, config.model, message_history=history)

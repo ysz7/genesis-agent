@@ -176,11 +176,14 @@ uv run agent                                            # interactive REPL
 uv run agent --serve --port 8181                        # HTTP service
 ```
 
-In the **REPL**, type a task or a command: `/help` · `/tools` · `/clear`
-(forget the conversation) · `/reload` (pick up newly approved tools) · `/quit`.
-With **persistent threads** on (`threads.enabled`), `agent --session work`
-resumes a saved conversation, and `/threads` · `/resume <id>` · `/new` manage
-them — a thread survives a restart (see [Configuration](#configuration)).
+In the **REPL** (powered by `prompt_toolkit`: multi-line paste, ↑/↓ history,
+line editing), type a task or a command: `/help` · `/tools` · `/clear`
+(forget the conversation) · `/reload` (pick up newly approved tools) ·
+`/attach <path>` (send a file with your next message) · `/quit`. Ctrl+C cancels
+the current line; Ctrl+D exits. With **persistent threads** on
+(`threads.enabled`), `agent --session work` resumes a saved conversation, and
+`/threads` · `/resume <id>` · `/new` manage them — a thread survives a restart
+(see [Configuration](#configuration)).
 
 The **HTTP server** binds `127.0.0.1` (localhost only) by default — pass
 `--host 0.0.0.0` to accept remote connections (the Docker image does this). Set
@@ -208,10 +211,13 @@ pass `POST {"task": ..., "session": "<id>"}` to carry a conversation across
 requests (loaded and saved per `session_id`); omit `session` and it stays
 stateless.
 
-**Multimodal input** (vision-capable models): attach images/PDFs with
-`uv run agent "what's this?" --image photo.png`, by dragging a file into the
-REPL, or via `POST /task` with `{"task": ..., "images": ["https://..."]}` (the
-server accepts URLs only). A non-vision model degrades with a clear message.
+**Attachments.** In the REPL, `/attach <path>` (or drag a file into the terminal)
+sends a file with your next message: **images/PDF** go to the model as multimodal
+parts (needs a vision model), and **text documents** (code, `.md`, `.csv`,
+`.json`, …) are read and inlined into the prompt so they work on any model.
+One-shot: `uv run agent "what's this?" --image photo.png`. Server: `POST /task`
+with `{"task": ..., "images": ["https://..."]}` (URLs only). A non-vision model
+degrades with a clear message.
 
 ## Make a vertical agent
 

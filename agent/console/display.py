@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -152,6 +153,7 @@ async def run_streamed(
     task_text = prompt_text(task)  # text form for the run log (not image bytes)
     deps.extra.pop("plan", None)  # the todo scratchpad is per-task (Phase 13)
 
+    console.print()  # breathing room: don't cram the tree against the input line
     status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
     global _active_status
     _active_status = status
@@ -358,6 +360,170 @@ def answer(text: str, *, markdown: bool = True) -> None:
         Panel(renderable if renderable is not None else Text(body),
               border_style="green", title="[dim]answer[/]")
     )
+
+
+# ── Input: prompt_toolkit line reader ────────────────────────────────────────
+# prompt_toolkit handles the input line ONLY (paste, history, editing); all the
+# rich OUTPUT above (tree, panels, stats) is unchanged. A multi-line paste is
+# inserted as one block (bracketed paste, cross-platform incl. Windows) and
+# submitted as a single prompt; ↑/↓ recalls past commands (FileHistory in the
+# workspace). Falls back to input() if prompt_toolkit is unavailable / no TTY.
+
+
+def _safe_text(text: str) -> str:
+    """Recombine lone UTF-16 surrogates (Windows emoji input) into real chars.
+
+    prompt_toolkit's Windows console reader can leave a non-BMP char (emoji) as
+    two lone surrogates; a UTF-16 round-trip stitches the pair back so the text
+    is valid UTF-8 (else writing history or encoding the prompt crashes). Also
+    normalizes CRLF/CR to LF (stray ^M from Windows pastes).
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        return text.encode("utf-16", "surrogatepass").decode("utf-16")
+    except Exception:  # noqa: BLE001 - last resort: drop the bad units
+        return text.encode("utf-8", "replace").decode("utf-8")
+
+
+def _safe_history(path: str):
+    """A FileHistory that sanitizes surrogates before writing (Windows emoji)."""
+    from prompt_toolkit.history import FileHistory
+
+    class _SafeFileHistory(FileHistory):
+        def store_string(self, string: str) -> None:
+            super().store_string(_safe_text(string))
+
+    return _SafeFileHistory(path)
+
+
+def _placeholder_span(text: str, cursor: int, store: dict, *, before: bool):
+    """The (start, end, placeholder) a Backspace/Delete would touch, or None.
+
+    *before* True = Backspace (cursor just after / inside a placeholder);
+    False = Delete (cursor at start / inside). Lets the editor treat a
+    '[Pasted text …]' token as one atomic unit instead of single characters.
+    """
+    for ph in store:
+        idx = 0
+        while (idx := text.find(ph, idx)) != -1:
+            start, end = idx, idx + len(ph)
+            if (before and start < cursor <= end) or (not before and start <= cursor < end):
+                return start, end, ph
+            idx = end
+    return None
+
+
+def _attachable(path_str: str) -> bool:
+    """True if a pasted/dropped token is a path to an attachable file."""
+    try:
+        from ..runtime.attachments import is_attachable_path
+
+        return is_attachable_path(path_str)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _unique(store: dict, placeholder: str) -> str:
+    """Make *placeholder* unique within *store* (e.g. two files with one name)."""
+    if placeholder not in store:
+        return placeholder
+    base, i = placeholder[:-1], 2          # strip the trailing ']'
+    while f"{base} ({i})]" in store:
+        i += 1
+    return f"{base} ({i})]"
+
+
+def _paste_bindings(store: dict):
+    """Collapse a multi-line paste to a '[Pasted text +N lines]' placeholder.
+
+    The real text is kept in *store* (placeholder → text) and swapped back in
+    when the line is submitted — so the prompt stays readable, history stores the
+    short placeholder, and a huge paste doesn't flood the screen (Claude-Code-style).
+    Backspace/Delete remove a whole placeholder atomically (and drop its text).
+    """
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.document import Document
+
+    kb = KeyBindings()
+
+    @kb.add(Keys.BracketedPaste)
+    def _(event):
+        # Normalize line endings ourselves — our binding replaces prompt_toolkit's
+        # default paste handler, which is what otherwise does this (else Windows
+        # CRLF leaves stray ^M and the newline count is wrong, so nothing collapses).
+        data = event.data.replace("\r\n", "\n").replace("\r", "\n")
+        if "\n" not in data and _attachable(data):       # a dropped file → chip
+            name = Path(data.strip().strip(chr(34)).strip(chr(39))).name
+            placeholder = _unique(store, f"[file: {name}]")
+            store[placeholder] = data.strip()
+            event.current_buffer.insert_text(placeholder)
+            return
+        nlines = data.count("\n")
+        if nlines >= 1:                                  # multi-line → collapse
+            placeholder = _unique(store, f"[Pasted text #{len(store) + 1} +{nlines + 1} lines]")
+            store[placeholder] = data
+            event.current_buffer.insert_text(placeholder)
+        else:
+            event.current_buffer.insert_text(data)
+
+    def _erase(event, *, before: bool):
+        buf = event.current_buffer
+        span = _placeholder_span(buf.text, buf.cursor_position, store, before=before)
+        if span is None:
+            (buf.delete_before_cursor if before else buf.delete)(1)  # normal key
+            return
+        start, end, ph = span
+        buf.document = Document(buf.text[:start] + buf.text[end:], cursor_position=start)
+        store.pop(ph, None)                              # drop the hidden paste too
+
+    @kb.add(Keys.Backspace)
+    def _(event):
+        _erase(event, before=True)
+
+    @kb.add(Keys.Delete)
+    def _(event):
+        _erase(event, before=False)
+
+    return kb
+
+
+def new_prompt_session(workspace):
+    """A prompt_toolkit session (history in workspace), or None to use input()."""
+    if not sys.stdin.isatty():
+        return None
+    try:
+        from prompt_toolkit import PromptSession
+
+        store: dict[str, str] = {}
+        session = PromptSession(
+            history=_safe_history(str(Path(workspace) / ".repl_history")),
+            key_bindings=_paste_bindings(store),
+        )
+        session._paste_store = store  # type: ignore[attr-defined]
+        return session
+    except Exception:  # noqa: BLE001 - any failure → plain input() fallback
+        return None
+
+
+def read_line(session, prompt: str) -> str:
+    """Read one input line via *session* (prompt_toolkit), or input() if None.
+
+    Expands any collapsed-paste placeholders back to their real text and repairs
+    surrogate pairs. Raises ``KeyboardInterrupt`` on Ctrl+C and ``EOFError`` on
+    Ctrl+D, like ``input()`` — the REPL maps those to "cancel line" / "exit".
+    """
+    if session is None:
+        return input(prompt)
+    from prompt_toolkit.formatted_text import ANSI
+
+    text = session.prompt(ANSI(prompt))
+    store = getattr(session, "_paste_store", None)
+    if store:
+        for placeholder, real in store.items():
+            text = text.replace(placeholder, real)
+        store.clear()
+    return _safe_text(text)
 
 
 def confirm_tool(name: str, rendered_args: str) -> bool:
