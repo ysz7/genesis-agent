@@ -662,3 +662,90 @@ class ServerMonitor:
         grid.add_row("tokens", f"{self.tokens:,}")
         grid.add_row("avg time", f"{avg:.1f}s")
         console.print(Panel(grid, border_style="dim", title="[dim]stats[/]"))
+
+
+class GatewayMonitor:
+    """A rich live feed + running stats for a gateway process (Phase 22).
+
+    The CLI passes one of these to a gateway when stdout is a console; the gateway
+    calls the hooks (it never imports rich itself, so headless/Docker stays clean).
+    Mirrors :class:`ServerMonitor`: a banner on start, a line per inbound message
+    and its reply, and a closing summary on Ctrl+C.
+    """
+
+    def __init__(self, channel: str, info: dict | None = None):
+        self.channel = channel
+        self.info = info or {}
+        self.started = time.time()
+        self.messages = 0
+        self.errors = 0
+        self.blocked = 0
+        self.tokens = 0
+        self.total_time = 0.0
+        self.users: set = set()
+        self._lock = threading.Lock()
+
+    def on_start(self) -> None:
+        console.print(LOGO.format(c=EMERALD))
+        grid = Table.grid(padding=(0, 2))
+        grid.add_column(style="dim", justify="right")
+        grid.add_column()
+        for label in ("token", "owner", "allowed", "store", "model"):
+            if self.info.get(label) not in (None, ""):
+                grid.add_row(label, str(self.info[label]))
+        grid.add_row("", "[dim]long-poll · Ctrl+C to stop[/]")
+        console.print(
+            Panel(grid, border_style=EMERALD, title=f"[dim]gateway · {self.channel}[/]")
+        )
+
+    def _who(self, user_id: str, user_name: str = "") -> str:
+        return f"@{user_name} ({user_id})" if user_name else str(user_id)
+
+    def on_message(self, user_id: str, user_name: str, text: str) -> None:
+        with self._lock:
+            self.messages += 1
+            self.users.add(str(user_id))
+        ts = time.strftime("%H:%M:%S")
+        console.print(
+            f"  [dim]{ts}[/] [{EMERALD}]→[/] [dim]{_esc(self._who(user_id, user_name))}:[/] "
+            f"{_esc(_trunc(text or '(media)', 56))}"
+        )
+
+    def on_reply(self, ok: bool, tokens: int, elapsed: float, preview: str = "") -> None:
+        with self._lock:
+            if not ok:
+                self.errors += 1
+            self.tokens += tokens
+            self.total_time += elapsed
+        mark = "[green]←[/]" if ok else "[red]←[/]"
+        meta = f"{elapsed:.1f}s" + (f" · {tokens:,} tok" if tokens else "")
+        console.print(f"           {mark} [dim]{meta}[/]  {_esc(_trunc(preview, 56))}")
+
+    def on_blocked(self, user_id: str) -> None:
+        with self._lock:
+            self.blocked += 1
+        ts = time.strftime("%H:%M:%S")
+        console.print(f"  [dim]{ts}[/] [yellow]⨯[/] [dim]{_esc(str(user_id))} blocked (not allowed)[/]")
+
+    def on_error(self, message: str) -> None:
+        with self._lock:
+            self.errors += 1
+        console.print(f"           [red]←[/] [dim]error: {_esc(_trunc(message, 60))}[/]")
+
+    def print_stats(self) -> None:
+        up = int(time.time() - self.started)
+        h, rem = divmod(up, 3600)
+        m, s = divmod(rem, 60)
+        uptime = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
+        avg = self.total_time / self.messages if self.messages else 0.0
+        grid = Table.grid(padding=(0, 2))
+        grid.add_column(style="dim", justify="right")
+        grid.add_column()
+        grid.add_row("uptime", uptime)
+        grid.add_row("messages", f"[bold]{self.messages}[/]  "
+                                 f"({'[red]' if self.errors else '[dim]'}{self.errors} err[/], "
+                                 f"[dim]{self.blocked} blocked[/])")
+        grid.add_row("users", str(len(self.users)))
+        grid.add_row("tokens", f"{self.tokens:,}")
+        grid.add_row("avg time", f"{avg:.1f}s")
+        console.print(Panel(grid, border_style="dim", title="[dim]gateway stats[/]"))

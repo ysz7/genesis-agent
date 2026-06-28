@@ -8,6 +8,50 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+Messaging gateways (Phase 22) — chat with the agent from Telegram & WhatsApp.
+"One brain, many channels": a fourth thin entrypoint next to the CLI and the HTTP
+server, built into the core (no extra to install, no heavy SDK — pure `httpx`).
+
+### Added
+- **Telegram gateway** — run it locally with long-polling (no public URL needed)
+  from the menu's new **Gateways** screen or `agent --gateway telegram`. Each
+  channel runs as **its own process** (PID-tracked), so a bot started from the
+  menu keeps running after you leave it and works in parallel with the CLI.
+- **WhatsApp gateway** — Meta Cloud API, webhook-only: run `agent --serve` and
+  point Meta's webhook at `POST /webhook/whatsapp` (with the `GET` verification
+  handshake handled).
+- **Webhooks on `--serve`** — every enabled gateway also mounts at
+  `POST /webhook/<name>`, verified against `WEBHOOK_SECRET`, for production/Docker
+  deployments. The same channel that long-polls locally is driven by webhooks on
+  a server.
+- **Per-user memory** — each platform user maps to its own persistent thread
+  (`<gateway>:<user_id>`), so conversations are isolated and survive a restart.
+  Gateways use the concurrent SQLite/WAL store (a JSON store is flagged).
+- **Deny-all access control** — empty allowlist means nobody; an unknown user is
+  refused with their id echoed back. The Telegram owner manages access in chat
+  with `/allow`, `/deny`, `/allowlist` (and `/whoami`), or you manage it from the
+  menu. The owner id always passes (bootstrap).
+- **Inbound media** — Telegram photos/documents are downloaded and attached:
+  images/PDF as multimodal parts (vision), text documents inlined into the prompt.
+- **Formatted replies** — the model's markdown is rendered to Telegram's HTML
+  subset by default (**bold**, `code`, lists, links — no more raw `**`), with a
+  plain-text fallback if Telegram rejects it (`parse_mode: plain` to force plain;
+  WhatsApp replies are flattened to plain text).
+- **Inline-button approvals (Telegram)** — confirm-gated tools route to the chat
+  as Allow / Always / Deny buttons instead of being refused headlessly; channels
+  without buttons fall back to refusal.
+- **Per-user daily quota** (`max_messages_per_day`) and Telegram flood-wait (429
+  `retry_after`) backoff, to bound token spend and respect rate limits.
+- **Live monitor** — a gateway started from the menu opens in its own console
+  window with a banner (channel · token · owner · allowlist · store · model), a
+  live feed (each message in → reply with tokens/elapsed; blocked/errors), and a
+  closing stats panel. Headless runs log plainly to `workspace/gateways/<name>.log`
+  (always written, so the menu's *View log* works either way).
+- Configure everything under `gateways:` in `settings.yaml` (off by default;
+  dormant until a token is set in `.env`).
+
 ## [1.0.1] — 2026-06-28
 
 CLI / REPL polish — a `prompt_toolkit`-powered prompt, file & document

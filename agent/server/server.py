@@ -33,11 +33,14 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import os
 import queue
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+
+import httpx
 
 from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
@@ -47,6 +50,8 @@ from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, v
 from ..engine.factory import build_agent
 from ..engine import guardrails
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
+from ..gateways import discover_gateways, gateway_enabled
+from ..gateways.base import store_guard
 
 MAX_BODY = 1_048_576  # 1 MB — reject larger POST bodies with 413 before reading.
 
@@ -67,6 +72,24 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
     loop = asyncio.new_event_loop()
     threading.Thread(target=loop.run_forever, daemon=True, name="agent-loop").start()
     asyncio.run_coroutine_threadsafe(agent.__aenter__(), loop).result()
+
+    # Messaging webhooks (Phase 22g): for every enabled gateway, mount
+    # ``POST /webhook/<name>``. The same channel that long-polls locally is driven
+    # by inbound webhook updates here, sharing this agent + deps + loop. Inbound is
+    # verified against WEBHOOK_SECRET and processed fire-and-forget (a webhook must
+    # return 200 promptly; the agent run continues on the loop).
+    webhooks: dict = {}
+    for name, cls in discover_gateways(config).items():
+        if gateway_enabled(config.settings, name):
+            gw = cls(config, deps)
+            gw._pipeline = gw.make_pipeline(agent)
+            webhooks[name] = gw
+    webhook_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0)) if webhooks else None
+    webhook_secret = os.getenv("WEBHOOK_SECRET") or None
+    if webhooks:
+        problem = store_guard(deps.store)
+        if problem:
+            print(f"note: gateways share this store — {problem}")
 
     def _submit(coro, timeout: float | None = serve_timeout):
         """Run *coro* on the shared loop, bounded by *timeout*. Blocks the caller.
@@ -133,7 +156,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
         def do_GET(self) -> None:  # noqa: N802 - stdlib naming
             self._detailed = False
             parsed = urlparse(self.path)
-            if parsed.path == "/health":
+            if parsed.path.startswith("/webhook/"):
+                self._handle_webhook_get(parsed)
+            elif parsed.path == "/health":
                 self._send(200, {"status": "ok", "agent": config.agent_name})
             elif parsed.path == "/task":
                 if not self._authorized():
@@ -165,6 +190,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib naming
             self._detailed = False
+            if self.path.startswith("/webhook/"):
+                self._handle_webhook()
+                return
             if self.path != "/task":
                 self._send(404, {"error": "not found"})
                 return
@@ -193,6 +221,68 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             # Optional persistent thread (Phase 18): a caller may pass a session
             # id to carry a conversation across requests. Stateless without it.
             self._handle_task(prompt, session=data.get("session"))
+
+        def _send_text(self, code: int, text: str) -> None:
+            """Send a plain-text response (webhook handshakes want raw text)."""
+            body = (text or "").encode("utf-8")
+            try:
+                self.send_response(code)
+                self.send_header("content-type", "text/plain")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (ConnectionError, BrokenPipeError, OSError):
+                pass
+
+        def _handle_webhook_get(self, parsed) -> None:
+            """GET ``/webhook/<gateway>`` — a channel's verification handshake (Meta)."""
+            name = parsed.path[len("/webhook/"):].strip("/")
+            gw = webhooks.get(name)
+            if gw is None:
+                self._send(404, {"error": f"no gateway mounted at /webhook/{name}"})
+                return
+            result = gw.webhook_verify(parse_qs(parsed.query))
+            if result is None:
+                self._send(404, {"error": f"{name} has no GET handshake"})
+                return
+            code, text = result
+            self._send_text(code, text)
+
+        def _handle_webhook(self) -> None:
+            """Accept an inbound platform update for ``/webhook/<gateway>`` (Phase 22g).
+
+            Verifies the shared secret, parses the update, and hands it to the
+            gateway on the shared loop *without waiting* — a webhook must answer
+            200 quickly while the agent run continues in the background.
+            """
+            name = self.path[len("/webhook/"):].strip("/")
+            # Always drain the request body first — replying without reading it
+            # resets the connection (the client sees a read error, not the status).
+            raw = self._read_body()
+            if raw is None:
+                return                          # _read_body already sent the error
+            gw = webhooks.get(name)
+            if gw is None:
+                self._send(404, {"error": f"no gateway mounted at /webhook/{name}"})
+                return
+            if webhook_secret:
+                got = self.headers.get("x-telegram-bot-api-secret-token", "")
+                if not (len(got) == len(webhook_secret) and hmac.compare_digest(got, webhook_secret)):
+                    self._send(401, {"error": "bad webhook secret"})
+                    return
+            try:
+                update = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                self._send(400, {"error": "invalid JSON update"})
+                return
+            # Fire-and-forget on the shared loop; handle_update catches its own errors.
+            asyncio.run_coroutine_threadsafe(gw.handle_update(webhook_client, update), loop)
+            if monitor:
+                try:
+                    monitor.on_access("POST", self.path, 200, self.client_address[0])
+                except Exception:  # noqa: BLE001
+                    pass
+            self._send(200, {"ok": True})
 
         def _read_body(self) -> bytes | None:
             """Read the request body, enforcing the size limit. None on error sent."""
@@ -318,6 +408,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd._agent = agent  # type: ignore[attr-defined]
     httpd._loop = loop    # type: ignore[attr-defined]
+    httpd._webhook_client = webhook_client  # type: ignore[attr-defined]
     return httpd, deps
 
 
@@ -325,8 +416,14 @@ def _teardown(httpd, deps) -> None:
     """Exit the agent context, stop the loop thread, release deps."""
     loop = getattr(httpd, "_loop", None)
     agent = getattr(httpd, "_agent", None)
+    webhook_client = getattr(httpd, "_webhook_client", None)
     httpd.server_close()
     if loop is not None and agent is not None:
+        if webhook_client is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(webhook_client.aclose(), loop).result(timeout=5)
+            except Exception:  # noqa: BLE001 - best-effort shutdown
+                pass
         try:
             asyncio.run_coroutine_threadsafe(
                 agent.__aexit__(None, None, None), loop

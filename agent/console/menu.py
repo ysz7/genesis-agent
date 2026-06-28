@@ -377,6 +377,155 @@ def _show_subagent(spec, enabled: bool) -> None:
         pass
 
 
+def _pause() -> None:
+    try:
+        input("\n  press Enter to return…")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+# ── Gateways (messaging channels) ─────────────────────────────────────────────
+
+def _gw_label(config, name: str) -> str:
+    from ..gateways import manager
+
+    st = manager.status(config, name)
+    return f"{name}  ·  " + (f"running (pid {st['pid']})" if st["running"] else "stopped")
+
+
+def _gateways(root: Path) -> None:
+    """Start/stop messaging channels (Telegram, …) and manage their access.
+
+    Each channel runs as its **own** process (PID-tracked), so a bot started here
+    keeps running after you leave the menu and works in parallel with the CLI.
+    Gateways need the SQLite/WAL store; a JSON store is flagged here.
+    """
+    from ..runtime.config import load_config
+    from ..runtime.context import build_deps, close_deps
+    from ..gateways import discover_gateways
+    from ..gateways.base import store_guard
+
+    config = load_config(root)
+    classes = discover_gateways(config)
+    if not classes:
+        select("Gateways", ["Back"], subtitle="no channels available in this agent")
+        return
+    deps = build_deps(config)
+    try:
+        names = sorted(classes)
+        while True:
+            warn = store_guard(deps.store)
+            options = [_gw_label(config, n) for n in names] + ["Back"]
+            sub = warn or "a channel runs as its own process — survives leaving the menu"
+            choice = select("Gateways  —  messaging channels", options, subtitle=_clip(sub, 70))
+            if choice is None or choice >= len(names):
+                return
+            _gateway_actions(config, deps, names[choice], classes[names[choice]])
+    finally:
+        close_deps(deps)
+
+
+def _gateway_actions(config, deps, name: str, cls) -> None:
+    from ..gateways import manager
+    from ..gateways.base import store_guard
+
+    env_file = config.root / ".env"
+    token_env = getattr(cls, "token_env", "")
+    owner_env = getattr(cls, "owner_env", "")
+
+    while True:
+        st = manager.status(config, name)
+        running = st["running"]
+        env = _read_env(env_file)
+        token_val = (env.get(token_env) or os.getenv(token_env, "")) if token_env else ""
+
+        rows = ["Stop" if running else "Start", "View log"]
+        if token_env:
+            rows.append(f"Token     · {_mask(token_val)}")
+        if owner_env:
+            rows.append(f"Owner id  · {env.get(owner_env, '') or os.getenv(owner_env, '') or '(unset)'}")
+        rows += ["Manage allowlist", "Back"]
+
+        guard = store_guard(deps.store)
+        sub = guard or (f"running (pid {st['pid']})" if running else "stopped")
+        choice = select(f"Gateway · {name}", rows, subtitle=_clip(sub, 70))
+        if choice is None:
+            return
+        picked = rows[choice]
+
+        if picked == "Start":
+            problem = store_guard(deps.store)
+            if problem:
+                display.err(problem)
+                _pause()
+            elif token_env and not token_val:
+                display.warn(f"set the token first ({token_env}).")
+                _pause()
+            else:
+                manager.start(config, name)
+                display.ok(f"{name} started — see View log for output")
+                _pause()
+        elif picked == "Stop":
+            stopped = manager.stop(config, name)
+            display.ok(f"{name} stopped" if stopped else f"{name} was not running")
+            _pause()
+        elif picked == "View log":
+            _view_log(config, name)
+        elif token_env and picked.startswith("Token"):
+            _prompt_set(env_file, token_env, f"{name} bot token")
+        elif owner_env and picked.startswith("Owner"):
+            _prompt_set(env_file, owner_env, f"{name} owner id (your numeric id)")
+        elif picked == "Manage allowlist":
+            _manage_allowlist(config, deps, name)
+        else:
+            return
+
+
+def _view_log(config, name: str) -> None:
+    from ..gateways import manager
+
+    _clear()
+    path = manager.log_path(config, name)
+    console.print(f"\n  [dim]{path}[/]\n")
+    if not path.exists():
+        console.print("  [dim](no log yet — start the gateway first)[/]")
+    else:
+        try:
+            tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+        except OSError as exc:
+            tail = [f"(could not read log: {exc})"]
+        for line in tail:
+            console.print(f"  [dim]{_clip(line, 100)}[/]")
+    _pause()
+
+
+def _manage_allowlist(config, deps, name: str) -> None:
+    from ..gateways.base import AccessControl, gateway_settings
+
+    seed = gateway_settings(config.settings, name).get("allowlist")
+    ac = AccessControl(deps.store, name, seed)
+    while True:
+        ids = ac.listing()
+        options = (["Add id", "Remove id", "Back"] if ids else ["Add id", "Back"])
+        sub = ("allowed: " + ", ".join(ids)) if ids else "empty = deny-all (nobody can chat)"
+        choice = select(f"Allowlist · {name}", options, subtitle=_clip(sub, 70))
+        if choice is None:
+            return
+        picked = options[choice]
+        if picked == "Add id":
+            val = _edit_line("  id= ", "")
+            if val and val.strip():
+                ac.allow(val.strip())
+        elif picked == "Remove id":
+            pick = select("Remove which id?", ids + ["Cancel"])
+            if pick is not None and pick < len(ids):
+                if not ac.deny(ids[pick]):
+                    display.warn("that id is seeded in settings.yaml — edit it there to remove")
+                    _pause()
+        else:
+            return
+
+
 def _check_updates(root) -> None:
     """Read-only: compare the local version against the newest tag on GitHub."""
     from ..runtime import updates
@@ -676,6 +825,7 @@ def run(root: str | None = None) -> int:
                 "Chat with the agent",
                 "Scheduler",
                 "Subagents",
+                "Gateways",
                 "Settings",
                 "Serve (HTTP + live monitor)",
                 "Create a new agent",
@@ -691,14 +841,16 @@ def run(root: str | None = None) -> int:
         elif choice == 2:
             _subagents(root_path)
         elif choice == 3:
-            _settings(root_path)
+            _gateways(root_path)
         elif choice == 4:
-            _serve(root)
+            _settings(root_path)
         elif choice == 5:
+            _serve(root)
+        elif choice == 6:
             from . import wizard
 
             wizard.run_wizard(root)
-        elif choice == 6:
+        elif choice == 7:
             _check_updates(root_path)
         else:
             _clear()

@@ -97,6 +97,9 @@ cd genesis-agent
   (both on by default; see [Planning & delegation](#planning--delegation)).
 - **Headless HTTP mode** (`--serve`, zero extra deps) with **SSE streaming**,
   **optional [MCP](https://modelcontextprotocol.io) servers**, **Docker-ready**.
+- **Messaging gateways** — chat with the agent from **Telegram** & **WhatsApp**
+  (built into the core, no SDK). Per-user memory, deny-all access control, inbound
+  media, and inline-button approvals (see [Gateways](#gateways-telegram--whatsapp)).
 - **Observable** — optional [Logfire](https://logfire.pydantic.dev) tracing, a
   local JSONL run log, and an opt-in `pydantic-evals` harness for your vertical.
 - **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
@@ -105,8 +108,8 @@ cd genesis-agent
 
 **The base `uv sync` installs everything needed for all core features** — memory,
 compaction, planning, subagents, self-improvement, threads, guardrails, model
-fallback, semantic memory, the server, multimodal, Docker/cron. Only four
-**optional packages** are opt-in:
+fallback, semantic memory, the server, multimodal, **messaging gateways
+(Telegram/WhatsApp)**, Docker/cron. Only four **optional packages** are opt-in:
 
 | Extra | Adds | Install |
 |-------|------|---------|
@@ -147,6 +150,7 @@ enable). Every `settings.yaml` key:
 | `generated_tools` | generated-tool timeout / banned imports | ✅ on (defaults) |
 | `approvals` | headless: honor persisted "always allow" grants | ⬜ off (deny) |
 | `memory` | `semantic: true` → relevance recall via embeddings | ⬜ off (recency) |
+| `gateways` | Telegram / WhatsApp channels (built-in; dormant until a token) | ⬜ off |
 | `mcp` | external MCP tool servers (also needs `--extra mcp`) | ⬜ off |
 
 Legend: ✅ active out of the box · ⬜ opt-in (commented out in the template).
@@ -154,8 +158,8 @@ Legend: ✅ active out of the box · ⬜ opt-in (commented out in the template).
 ## Usage
 
 **`start.cmd`** / **`./start.sh`** opens an arrow-key start menu: Chat ·
-Scheduler · Settings · Serve · Quit. The launchers find `uv` and auto-install
-deps on first run.
+Scheduler · Subagents · Gateways · Settings · Serve · Quit. The launchers find
+`uv` and auto-install deps on first run.
 
 <img src="docs/assets/genesis-agent-welcome-cli.png" alt="genesis-agent start menu" width="300">
 
@@ -465,6 +469,64 @@ To **improve** an existing skill or tool, the agent reads it (`read_skill` /
 The human approval — not the validation — is the security boundary; generated
 files carry a provenance header (when, prompting task, model) for auditability.
 
+## Gateways (Telegram & WhatsApp)
+
+Let people chat with your agent from a messaging app. A **gateway** is a fourth
+thin entrypoint next to the CLI and the HTTP server — inbound message → the same
+`build_agent` run → reply — built into the core (no extra to install, no heavy
+SDK; pure `httpx`). It's **opt-in and dormant** until you set `enabled: true` and
+a token. Configure channels under `gateways:` in `settings.yaml`.
+
+Two invariants worth knowing up front:
+
+- **Per-user memory** — each platform user gets their own persistent thread
+  (`<gateway>:<user_id>`), so gateways need the concurrent **SQLite/WAL** store:
+  set `store: agent.sqlite` in `settings.yaml`.
+- **Deny-all access** — an empty `allowlist` means *nobody*. Add ids in settings,
+  from the menu, or (Telegram) let the owner run `/allow <id>` in chat.
+
+### Run a Telegram bot locally (CLI / menu)
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
+2. In `settings.yaml`: set `store: agent.sqlite`, and under `gateways.telegram`
+   set `enabled: true` and your `owner_id` (your numeric id — message
+   [@userinfobot](https://t.me/userinfobot) to find it).
+3. Put the token in `.env`: `TELEGRAM_BOT_TOKEN=...` (and optionally
+   `TELEGRAM_OWNER_ID=...`).
+4. Start it from **`start.cmd` → Gateways → telegram → Start** (it runs as its own
+   process, so it keeps going after you leave the menu and runs in parallel with
+   the CLI). It opens in **its own window with a live monitor** — banner, a feed
+   of each message and reply (tokens · time), and closing stats. Or from a
+   terminal: `uv run agent --gateway telegram`.
+
+In the chat, the owner manages access with `/allow <id>`, `/deny <id>`,
+`/allowlist`; anyone allowed can `/whoami`. Send a photo or document and a
+vision model sees it. If a tool needs confirmation, the bot shows
+**Allow / Always / Deny** buttons (set `approvals: refuse` to disable). Stop the
+bot from the same menu screen, or view its log there.
+
+### Run on a server (Docker + webhook)
+
+On a server you don't sit in a menu — gateways mount as **webhooks** on the HTTP
+server. Run `agent --serve` (the Docker image does this) and every enabled gateway
+is reachable at `POST /webhook/<name>`:
+
+1. `settings.yaml`: `store: agent.sqlite` and `gateways.telegram.enabled: true`.
+2. `.env`: `TELEGRAM_BOT_TOKEN=...` and `WEBHOOK_SECRET=...` (a random string that
+   verifies inbound calls).
+3. Expose the server over HTTPS (a reverse proxy / tunnel) and register the
+   webhook with Telegram:
+   ```bash
+   curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+        -d "url=https://<your-host>/webhook/telegram" \
+        -d "secret_token=$WEBHOOK_SECRET"
+   ```
+
+**WhatsApp** is webhook-only (Meta Cloud API), so it always runs this way: set
+`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN` in `.env`, enable
+`gateways.whatsapp`, and point Meta's webhook at `https://<host>/webhook/whatsapp`
+(the `GET` verification handshake is handled; the `POST` carries messages).
+
 ## Docker
 
 ```bash
@@ -508,13 +570,14 @@ Register-ScheduledTask -TaskName "genesis-agent" -Action $action -Trigger $trigg
 ```
 genesis-agent/
 ├── agent/                  the frozen engine (never edited per vertical)
-│   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve
+│   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve · --gateway
 │   ├── __init__.py         public API: `from agent import AgentDeps, parse_rss`
 │   ├── runtime/            config · context (AgentDeps) · store · runlog · approvals
 │   ├── engine/             model · registry · factory · mcp · compaction · runner
 │   ├── tools/              builtins · toolkit (http/cache/rss/html) · selfimprove
 │   ├── console/            display (rich tree · spinner · stats) · menu
-│   └── server/             stdlib HTTP: POST /task · SSE /task/stream · live monitor
+│   ├── server/             stdlib HTTP: POST /task · SSE /task/stream · /webhook/<gw>
+│   └── gateways/           messaging channels: telegram · whatsapp · manager (PID)
 ├── persona.md              the vertical's system prompt          ← yours
 ├── settings.yaml           non-secret config (feeds, mcp, …)     ← yours
 ├── .env                    secrets (provider, model, key)        ← yours

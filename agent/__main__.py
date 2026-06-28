@@ -38,6 +38,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--menu", action="store_true", help="show the interactive start menu")
     parser.add_argument("--new", action="store_true", help="wizard to scaffold a new vertical agent")
     parser.add_argument("--serve", action="store_true", help="run as an HTTP service")
+    parser.add_argument(
+        "--gateway", default=None, metavar="NAME",
+        help="run a messaging gateway in this process (e.g. telegram); usually "
+             "started/stopped via the menu, not by hand",
+    )
     parser.add_argument("--port", type=int, default=8181, help="port for --serve")
     parser.add_argument(
         "--host", default="127.0.0.1",
@@ -71,8 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
     # Logging: CLI paths render the `agent.*` loggers through the rich console;
-    # --serve stays on plain stdlib logging (server code never imports rich).
-    if args.serve:
+    # --serve and --gateway stay on plain stdlib logging (headless, output tee'd
+    # to a log file — no rich, no color codes).
+    if args.serve or args.gateway:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     else:
         display.setup_logging()
@@ -94,6 +100,9 @@ def main(argv: list[str] | None = None) -> int:
 
         return server.serve(config, port=args.port, host=args.host)
 
+    if args.gateway:
+        return _run_gateway(config, args.gateway)
+
     agent = build_agent(config)
     deps = build_deps(config)
     deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
@@ -111,6 +120,58 @@ def main(argv: list[str] | None = None) -> int:
             )
             return _one_shot(agent, prompt, deps, config.model)
         return _repl(agent, config, deps, session_id=args.session)
+    finally:
+        close_deps(deps)
+
+
+def _run_gateway(config, name: str) -> int:
+    """Run one messaging gateway in this process until interrupted (Phase 22).
+
+    This is the target of ``agent --gateway <name>`` — normally spawned as a
+    subprocess by the menu's gateway manager (in its own console window), but
+    runnable by hand too. On a console it renders a live monitor (banner + feed +
+    closing stats); headless it logs plainly. Either way it always appends to the
+    gateway's log file so the menu's "View log" works.
+    """
+    from .gateways import get_gateway, manager
+
+    deps = build_deps(config)
+    try:
+        try:
+            gateway = get_gateway(config, name, deps)
+        except KeyError as exc:
+            display.err(str(exc))
+            return 2
+        problem = gateway.validate()
+        if problem:
+            display.err(f"cannot start gateway '{name}': {problem}")
+            return 2
+
+        # Logging: always persist to the gateway log file; on a console show the
+        # rich monitor instead of raw log lines (so the window is a live feed).
+        root = logging.getLogger()
+        for handler in list(root.handlers):
+            root.removeHandler(handler)
+        file_handler = logging.FileHandler(manager.log_path(config, name), encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        root.addHandler(file_handler)
+        root.setLevel(logging.INFO)
+
+        monitor = None
+        if sys.stdout.isatty():
+            monitor = display.GatewayMonitor(name, gateway.status_info())
+            gateway.monitor = monitor
+            monitor.on_start()
+        else:
+            root.addHandler(logging.StreamHandler())   # headless: also to stdout
+
+        try:
+            asyncio.run(gateway.run())
+        except KeyboardInterrupt:
+            pass
+        if monitor is not None:
+            monitor.print_stats()
+        return 0
     finally:
         close_deps(deps)
 

@@ -13,9 +13,10 @@
 name: genesis-agent
 
 # State-store file inside workspace/ for cross-run memory (get/set/append/all).
-# Default: state.json. Use *.json (human-readable, diffable) or *.db (SQLite,
-# better for large/concurrent state).
-store: state.json
+# Default: state.json. Use *.json (human-readable, diffable) or *.sqlite (SQLite,
+# better for large/concurrent state). REQUIRED for gateways: set agent.sqlite
+# (the CLI and a bot share this store, and only SQLite/WAL is concurrency-safe).
+store: agent.sqlite
 
 # Sandbox + state directory, relative to this folder. Default: workspace.
 # Rarely changed — handy to point several agents at one shared area, or onto a
@@ -254,6 +255,39 @@ self_improvement:
 #     url: https://example.com/mcp
 #     headers:
 #       Authorization: "Bearer ..."
+
+# ── Messaging gateways (optional) ───────────────────────────────────────────────
+# Let people chat with this agent from Telegram / WhatsApp — "one brain, many
+# channels". Built into the core (no extra to install); a channel stays DORMANT
+# until you set enabled: true AND its token in .env. Each gateway runs as its own
+# process; start/stop it from the menu ("Gateways") or with `agent --gateway
+# telegram`. On a server, run `agent --serve` and Meta/Telegram webhooks mount at
+# POST /webhook/<name>.
+#
+# Per-user memory: every platform user gets their OWN persistent thread
+# (session "<gateway>:<user_id>"), so gateways need the concurrent SQLite store —
+# set `store: agent.sqlite` above (a JSON store is unsafe when the CLI and a bot
+# write at once).
+#
+# Access is DENY-ALL: an empty allowlist means nobody. Add ids in settings, via
+# the menu, or (Telegram) let the owner run /allow <id> in chat. The owner id is
+# always allowed and is the only one who can run /allow · /deny · /allowlist.
+#   .env (secrets): TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_ID,
+#                   WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_VERIFY_TOKEN,
+#                   WEBHOOK_SECRET (verifies inbound webhooks on --serve)
+# gateways:
+#   telegram:
+#     enabled: true
+#     # owner_id: 123456789        # always allowed; runs /allow, /deny, /allowlist
+#     allowlist: []                # deny-all when empty; numeric Telegram ids
+#     max_messages_per_day: 50     # per-user quota (0 = unlimited)
+#     parse_mode: html             # html: render **bold**/lists/`code` (default) ·
+#                                  # plain: strip markdown · markdownv2: pass-through
+#     approvals: buttons           # buttons (inline Allow/Deny) | refuse (headless)
+#   whatsapp:                       # webhook-only — needs `agent --serve` + public URL
+#     enabled: true
+#     allowlist: []                # deny-all when empty; sender phone numbers
+#     max_messages_per_day: 50
 
 # ── Your vertical's settings ────────────────────────────────────────────────────
 # Add any keys your tools need; read them via ctx.deps.settings["..."]. Examples:
