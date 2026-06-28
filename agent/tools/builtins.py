@@ -1,7 +1,8 @@
 """The irreducible set of built-in tools, registered on every agent.
 
 ``read_file`` · ``write_file`` · ``list_dir`` · ``run_shell`` (the workhorse) ·
-``fetch_url``. Each is a plain function with a docstring + type hints; Pydantic
+``fetch_url`` · ``web_search``. Each is a plain function with a docstring + type
+hints; Pydantic
 AI derives the JSON schema from the signature, so there is no schema code of our
 own. Tools that need shared state take ``RunContext[AgentDeps]`` as the first
 parameter and reach the http client / store / settings via ``ctx.deps``.
@@ -24,7 +25,7 @@ from pathlib import Path
 from pydantic_ai import RunContext
 
 from ..runtime.context import AgentDeps
-from .toolkit import html_to_text
+from .toolkit import html_to_text, web_search as _web_search
 
 #: Fallback cap on a single tool's output (characters) when settings don't set
 #: ``max_tool_output``. ~20k chars ≈ 5k tokens.
@@ -182,5 +183,30 @@ def _looks_like_html(resp, text: str) -> bool:
     return head.startswith(("<!doctype html", "<html")) or "<html" in head
 
 
+def web_search(ctx: RunContext[AgentDeps], query: str, max_results: int = 5) -> str:
+    """Search the web for current information and return the top results.
+
+    Use this for anything you don't already know or that changes over time
+    (news, prices, weather, docs, "today"…): search, then ``fetch_url`` a
+    promising result link to read it in full. Returns a numbered list of
+    title · URL · snippet. Powered by DuckDuckGo (no API key).
+
+    Args:
+        query: What to search for.
+        max_results: How many results to return (default 5).
+    """
+    results = _web_search(query, client=ctx.deps.http, max_results=max_results)
+    if not results:
+        return (
+            f"No results for {query!r} (the search endpoint may be rate-limited). "
+            f"If you know a likely URL, try fetch_url instead."
+        )
+    blocks = [
+        f"{i}. {r['title']}\n   {r['url']}\n   {r['snippet']}".rstrip()
+        for i, r in enumerate(results, 1)
+    ]
+    return "\n".join(blocks)[: _output_cap(ctx)]
+
+
 #: The built-in tool functions, in registration order.
-BUILTIN_TOOLS = [read_file, write_file, list_dir, run_shell, fetch_url]
+BUILTIN_TOOLS = [read_file, write_file, list_dir, run_shell, fetch_url, web_search]

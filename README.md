@@ -38,7 +38,8 @@ production.
 
 **It runs in any environment from day one** — interactive terminal, headless
 HTTP service, Docker container, or on a schedule via cron / Task Scheduler — and
-a fresh copy is already a working general-purpose agent with five built-in tools:
+a fresh copy is already a working general-purpose agent with six built-in tools
+(file read/write, list dir, shell, fetch URL, **web search**):
 
 <img src="docs/assets/genesis-agent-chat-cli.png" alt="genesis-agent live console: identity and capabilities panels, then a task executed as a reasoning tree with a tokens/time footer">
 
@@ -293,7 +294,10 @@ inputs are untrusted. (Headless `--serve` has no human, so a confirm-listed
 tool refuses to run rather than executing unattended.)
 
 Built-in `fetch_url` returns HTML as readable text (tags stripped, links
-rendered as `text (href)`); pass `raw=True` for the untouched markup.
+rendered as `text (href)`); pass `raw=True` for the untouched markup. Built-in
+`web_search` finds current information (news, prices, weather, docs) via
+DuckDuckGo — no API key — returning title · URL · snippet to then `fetch_url`;
+for heavy use, swap in a search API (Tavily/Brave) in your own `tools/` file.
 
 ## Providers
 

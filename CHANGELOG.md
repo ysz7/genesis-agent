@@ -10,6 +10,14 @@ syncing, since some releases change defaults.
 
 ## [Unreleased]
 
+### Added
+- **`web_search` built-in tool** — the agent can now search the web for current
+  information (news, prices, weather, docs, "today") via DuckDuckGo (no API key),
+  then `fetch_url` a result to read it in full. Previously the agent could only
+  GET a single known URL, so questions needing a search (e.g. live weather) often
+  failed. Re-exported as `from agent import web_search`; swap in a search API
+  (Tavily/Brave) in your own `tools/` file for heavy use.
+
 Messaging gateways (Phase 22) — chat with the agent from Telegram & WhatsApp.
 "One brain, many channels": a fourth thin entrypoint next to the CLI and the HTTP
 server, built into the core (no extra to install, no heavy SDK — pure `httpx`).

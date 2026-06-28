@@ -27,7 +27,7 @@ def test_agent_loop_calls_vertical_tool(tmp_path):
     )
     # Disable the built-ins so TestModel exercises exactly our one tool.
     (tmp_path / "settings.yaml").write_text(
-        "tools:\n  disable: [read_file, write_file, list_dir, run_shell, fetch_url]\n",
+        "tools:\n  disable: [read_file, write_file, list_dir, run_shell, fetch_url, web_search]\n",
         encoding="utf-8",
     )
 

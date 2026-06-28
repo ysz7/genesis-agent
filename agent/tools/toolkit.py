@@ -7,8 +7,10 @@ parser. Import what you need inside ``tools/*.py``.
 
 from __future__ import annotations
 
+import html as _html
 import re
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -201,3 +203,73 @@ def html_to_text(html: str) -> str:
             out.append("")
             blank = True
     return "\n".join(out).strip()
+
+
+# ── Web search (DuckDuckGo HTML, no API key) ──────────────────────────────────
+
+_SEARCH_URL = "https://html.duckduckgo.com/html/"
+# DuckDuckGo's HTML endpoint blocks generic clients; present a browser UA.
+_SEARCH_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+_RESULT_RE = re.compile(r'<a\b([^>]*class="result__a"[^>]*)>(.*?)</a>', re.DOTALL | re.I)
+_SNIPPET_RE = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL | re.I)
+_HREF_RE = re.compile(r'href="([^"]+)"')
+
+
+def _strip_tags(s: str) -> str:
+    return _html.unescape(re.sub(r"<[^>]+>", "", s)).strip()
+
+
+def _ddg_real_url(href: str) -> str:
+    """Resolve DuckDuckGo's ``/l/?uddg=<encoded>`` redirect to the target URL."""
+    if href.startswith("//"):
+        href = "https:" + href
+    parsed = urllib.parse.urlparse(href)
+    if "duckduckgo.com" in parsed.netloc and parsed.path.startswith("/l/"):
+        uddg = urllib.parse.parse_qs(parsed.query).get("uddg")
+        if uddg:
+            return urllib.parse.unquote(uddg[0])
+    return href
+
+
+def _parse_ddg(html: str, max_results: int) -> list[dict]:
+    snippets = _SNIPPET_RE.findall(html)
+    out: list[dict] = []
+    for i, match in enumerate(_RESULT_RE.finditer(html)):
+        if len(out) >= max_results:
+            break
+        attrs, title = match.group(1), match.group(2)
+        href = _HREF_RE.search(attrs)
+        out.append({
+            "title": _strip_tags(title),
+            "url": _ddg_real_url(href.group(1)) if href else "",
+            "snippet": _strip_tags(snippets[i]) if i < len(snippets) else "",
+        })
+    return out
+
+
+def web_search(
+    query: str,
+    *,
+    client: httpx.Client | None = None,
+    max_results: int = 5,
+) -> list[dict]:
+    """Search the web via DuckDuckGo's HTML endpoint — no API key.
+
+    Returns a list of ``{"title", "url", "snippet"}`` dicts (best-effort; an
+    empty list on any error or rate-limit). The endpoint is unofficial and can
+    throttle — for heavy use, swap in a search API (Tavily/Brave) in your tool.
+    """
+    owns = client is None
+    client = client or httpx.Client(timeout=30.0, follow_redirects=True)
+    try:
+        resp = client.post(_SEARCH_URL, data={"q": query}, headers={"User-Agent": _SEARCH_UA})
+        resp.raise_for_status()
+        return _parse_ddg(resp.text, max_results)
+    except httpx.HTTPError:
+        return []
+    finally:
+        if owns:
+            client.close()
