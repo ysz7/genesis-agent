@@ -145,6 +145,7 @@ enable). Every `settings.yaml` key:
 | `prompt_caching` | reuse the provider's prompt cache | ⬜ off |
 | `attachments` | image / PDF input (multimodal); `max_mb` caps size | ✅ on (cap `10`MB) |
 | `planning` | `update_plan` todo scratchpad | ✅ on |
+| `scheduler` | agent-scheduled recurring tasks + background ticker | ✅ on |
 | `subagents` | `delegate` / `delegate_to` + named-agent authoring | ✅ on |
 | `self_improvement` | author skills / tools / lessons (tools need approval) | ✅ on |
 | `memory_recall` | recent lessons injected into the prompt | ✅ on (`5`) |
@@ -548,10 +549,23 @@ port is exposed beyond localhost.
 
 ## Scheduling
 
-**In-app** — the *Scheduler* menu item runs recurring tasks in a live feed.
-Jobs persist in the state store but fire only while the scheduler is open.
+**Agent-managed (conversational)** — the agent can schedule recurring tasks from
+a normal chat (CLI or a gateway): `schedule_task("summarize HN", "2h")`,
+`list_scheduled()`, `cancel_scheduled(id)`, `edit_scheduled(id, …)`. Jobs persist
+in the store and fire **in the background** while a long-lived process is up — a
+**gateway bot** or the **HTTP server** (`--serve`). Each result is delivered to
+**all channels** (every Telegram/WhatsApp allowlisted user, the CLI feed if open,
+the server log). One process runs each due job — a shared owner-lock prevents
+double-firing when a bot *and* the server are both up. On by default; configure
+under `scheduler:` in `settings.yaml` (`enabled`, `tick`, `max_jobs`). The
+interactive REPL is **not** a runner — it only surfaces delivered results between
+prompts; run `--serve` or a bot (or the menu's live scheduler) to actually fire.
 
-**External (24/7)** — drive one-shot runs with cron / systemd / Task Scheduler
+**In-app (menu)** — the *Scheduler* menu item adds/removes jobs and runs them in a
+live feed while open (same `scheduled_jobs` store the tools use).
+
+**External (24/7)** — when no bot/server is running, drive one-shot runs with
+cron / systemd / Task Scheduler
 via `scripts/run.sh` / `scripts/run.ps1` (not `start.cmd` — it ends with
 `pause`). Templates: [`schedule.example`](schedule.example).
 

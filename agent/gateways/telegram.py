@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from .base import Gateway, Inbound, Pipeline, Quota, store_guard
+from ..runtime import scheduler
 
 logger = logging.getLogger("agent.gateways.telegram")
 
@@ -264,6 +265,11 @@ class TelegramGateway(Gateway):
         self._quota = Quota(deps.store, self.name, self.conf.get("max_messages_per_day"))
         self._pipeline: Pipeline | None = None
         self._bridge: ApprovalBridge | None = None
+        # Background scheduler (Phase 23): this process can run due jobs (under the
+        # shared owner-lock) and deliver results to its users.
+        self._scheduler_on = bool((config.settings.get("scheduler") or {}).get("enabled", True))
+        self._owner_id = scheduler.default_owner_id()
+        self._tick_ttl = max(60.0, (POLL_TIMEOUT + 10) * 2)
 
     # configuration ------------------------------------------------------------
 
@@ -326,6 +332,8 @@ class TelegramGateway(Gateway):
                     raise
                 except Exception as exc:  # noqa: BLE001 - one bad message ≠ dead bot
                     logger.exception("error handling update: %s", exc)
+            # Scheduler tick: run due jobs (if we own the lock) + deliver results.
+            await self._tick_scheduler(client)
 
     async def _get_updates(self, client: httpx.AsyncClient, offset: int | None) -> list[dict]:
         params: dict[str, Any] = {"timeout": POLL_TIMEOUT}
@@ -382,6 +390,8 @@ class TelegramGateway(Gateway):
         # Route this user's tool approvals to inline buttons in their chat.
         if self._bridge is not None:
             self.deps.approval_hook = self._bridge.hook_for(chat_id)
+        # Stamp origin so schedule_task records where the job was created.
+        self.deps.extra["channel_origin"] = {"channel": self.name, "user": inbound.user_id}
         tmp: tempfile.TemporaryDirectory | None = None
         start = time.monotonic()
         ok = True
@@ -400,6 +410,7 @@ class TelegramGateway(Gateway):
                 tmp.cleanup()                 # bytes are already in the prompt
             if self._bridge is not None:
                 self.deps.approval_hook = None
+            self.deps.extra.pop("channel_origin", None)
         if self.monitor is not None:
             self.monitor.on_reply(
                 ok, self._pipeline.last_tokens, time.monotonic() - start, reply
@@ -490,6 +501,40 @@ class TelegramGateway(Gateway):
             "Access is closed for this bot.\n"
             f"Your Telegram id is {user_id} — ask the owner to allow it."
         )
+
+    # scheduler (Phase 23) ----------------------------------------------------
+
+    async def _tick_scheduler(self, client: httpx.AsyncClient) -> None:
+        """Run due jobs (if we hold the lock) and deliver pending results."""
+        if not self._scheduler_on or self._pipeline is None:
+            return
+        store = self.deps.store
+        try:
+            await scheduler.run_due_jobs(
+                store, self._pipeline.agent, self.deps,
+                owner_id=self._owner_id, ttl=self._tick_ttl,
+                usage_limits=getattr(self.config, "usage_limits", None),
+                on_fire=self._on_job_fire,
+            )
+        except Exception as exc:  # noqa: BLE001 - a bad tick must not kill the bot
+            logger.warning("scheduler tick failed: %s", exc)
+        # Deliver results addressed to telegram → every allowlisted user + owner.
+        recipients = self._delivery_recipients()
+        for rec in scheduler.pending_for(store, self.name):
+            for chat in recipients:
+                await self.send_message(client, chat, f"⏰ {rec['text']}")
+            scheduler.mark_delivered(store, rec["id"], self.name)
+
+    def _delivery_recipients(self) -> list[str]:
+        ids = [str(i) for i in self.access.listing()]
+        if self.owner_id and self.owner_id not in ids:
+            ids.append(self.owner_id)
+        return ids
+
+    def _on_job_fire(self, job: dict, text: str, ok: bool) -> None:
+        if self.monitor is not None:
+            self.monitor.on_message("scheduler", "", f"[job {job.get('id')}] {job.get('task')}")
+            self.monitor.on_reply(ok, 0, 0.0, text)
 
     # outbound -----------------------------------------------------------------
 

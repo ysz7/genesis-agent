@@ -197,6 +197,26 @@ def _attach_name(val) -> str:
     return val[0] if isinstance(val, tuple) else Path(val).name
 
 
+def _drain_cli_deliveries(deps) -> None:
+    """Show scheduled-task results delivered to the CLI (Phase 23g).
+
+    The REPL is not a runner — it only surfaces results produced by a gateway/the
+    server (which share this store). Printed between prompts, once each.
+    """
+    if not (deps.settings.get("scheduler") or {}).get("enabled", True):
+        return
+    from .runtime import scheduler
+
+    try:
+        records = scheduler.pending_for(deps.store, "cli")
+    except Exception:  # noqa: BLE001 - delivery is best-effort, never break the REPL
+        return
+    for rec in records:
+        display.info(f"scheduled result [{rec.get('job_id')}]:")
+        display.answer(rec["text"], markdown=deps.settings.get("render_markdown", True))
+        scheduler.mark_delivered(deps.store, rec["id"], "cli")
+
+
 def _repl(agent, config, deps, session_id=None) -> int:
     from .runtime import threads
 
@@ -223,6 +243,7 @@ def _repl(agent, config, deps, session_id=None) -> int:
     # prompt_toolkit input: correct multi-line paste, ↑/↓ history, line editing
     # (cross-platform). Falls back to input() when unavailable / not a TTY.
     pt = display.new_prompt_session(deps.workspace)
+    deps.extra["channel_origin"] = {"channel": "cli"}   # for schedule_task (Phase 23)
     return _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, pt)
 
 
@@ -232,6 +253,7 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
 
     pending: list[tuple[str, object]] = []   # /attach'd files for the next message
     while True:
+        _drain_cli_deliveries(deps)           # surface scheduled results (Phase 23g)
         try:
             task = display.read_line(pt, "  \033[1m›\033[0m ").strip()
         except KeyboardInterrupt:            # Ctrl+C cancels the current line

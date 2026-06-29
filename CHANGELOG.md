@@ -8,9 +8,20 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.2.1] — 2026-06-29
 
 ### Added
+- **Agent-managed scheduling** — the agent can now create recurring tasks from a
+  chat (`schedule_task`, `list_scheduled`, `cancel_scheduled`, `edit_scheduled`),
+  e.g. "summarize HN every 2 hours". Jobs persist in the store and fire **in the
+  background** while a gateway bot or the HTTP server (`--serve`) is up; each
+  result is **delivered to all channels** (every allowlisted Telegram/WhatsApp
+  user, the CLI feed if open, the server log). A shared owner-lock runs each due
+  job exactly once across processes. On by default (`scheduler:` in
+  `settings.yaml`: `enabled`, `tick`, `max_jobs`). The menu's Scheduler now shares
+  the same `scheduled_jobs` store and schema. (Previously the scheduler was
+  menu-only and fired only while that menu loop was open; the agent had no way to
+  schedule, list, or cancel tasks.)
 - **`web_search` built-in tool** — the agent can now search the web for current
   information (news, prices, weather, docs, "today") via DuckDuckGo (no API key),
   then `fetch_url` a result to read it in full. Previously the agent could only

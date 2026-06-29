@@ -185,6 +185,24 @@ retries: 2
 planning:
   enabled: true
 
+# ── Scheduling (recurring tasks, optional) ───────────────────────────────────────
+# Lets the agent schedule recurring tasks from a chat — `schedule_task`,
+# `list_scheduled`, `cancel_scheduled`, `edit_scheduled` (e.g. "summarize HN every
+# 2 hours"). Jobs persist in the store (shared with the menu's Scheduler) and fire
+# in the BACKGROUND while a long-lived process is up — a gateway bot or the HTTP
+# server (`--serve`). Each result is delivered to ALL channels (every Telegram /
+# WhatsApp allowlisted user, the CLI feed if open, the server log). ON by default.
+#   enabled  : register the tools + run the background ticker. Default true.
+#   tick     : server check interval, seconds (how often it looks for due jobs).
+#   max_jobs : cap on stored jobs (guards token spend). 0 / unset = unlimited.
+# One process runs each due job (a shared owner-lock prevents double-firing);
+# delivery still fans out to every channel. Jobs only fire while a bot/server is
+# up — for 24/7 without one, use external cron (scripts/run.*).
+scheduler:
+  enabled: true
+  tick: 30
+  max_jobs: 50
+
 # ── Subagents / delegation (optional) ────────────────────────────────────────────
 # Gives the agent `delegate(task)` — run a fresh sub-agent on an isolated subtask
 # (clean context) and get back just its answer. Good for focused lookups or

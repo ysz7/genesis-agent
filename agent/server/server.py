@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import logging
 import os
 import queue
 import threading
@@ -52,6 +53,7 @@ from ..engine import guardrails
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 from ..gateways import discover_gateways, gateway_enabled
 from ..gateways.base import store_guard
+from ..runtime import scheduler
 
 MAX_BODY = 1_048_576  # 1 MB — reject larger POST bodies with 413 before reading.
 
@@ -90,6 +92,34 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
         problem = store_guard(deps.store)
         if problem:
             print(f"note: gateways share this store — {problem}")
+
+    # Background scheduler (Phase 23): run due jobs (under the shared owner-lock)
+    # and drain server-addressed deliveries (logged) while serving.
+    sched_future = None
+    if (config.settings.get("scheduler") or {}).get("enabled", True):
+        tick = float((config.settings.get("scheduler") or {}).get("tick", 30))
+        owner = scheduler.default_owner_id()
+
+        async def _scheduler_loop():
+            log = logging.getLogger("agent.scheduler")
+            while True:
+                try:
+                    await scheduler.run_due_jobs(
+                        deps.store, agent, deps,
+                        owner_id=owner, ttl=max(60.0, tick * 2),
+                        usage_limits=config.usage_limits,
+                    )
+                    for rec in scheduler.pending_for(deps.store, "server"):
+                        log.info("scheduled delivery [%s]: %s",
+                                 rec.get("job_id"), str(rec.get("text"))[:200])
+                        scheduler.mark_delivered(deps.store, rec["id"], "server")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - keep the loop alive
+                    log.warning("scheduler loop error: %s", exc)
+                await asyncio.sleep(tick)
+
+        sched_future = asyncio.run_coroutine_threadsafe(_scheduler_loop(), loop)
 
     def _submit(coro, timeout: float | None = serve_timeout):
         """Run *coro* on the shared loop, bounded by *timeout*. Blocks the caller.
@@ -409,6 +439,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
     httpd._agent = agent  # type: ignore[attr-defined]
     httpd._loop = loop    # type: ignore[attr-defined]
     httpd._webhook_client = webhook_client  # type: ignore[attr-defined]
+    httpd._sched_future = sched_future  # type: ignore[attr-defined]
     return httpd, deps
 
 
@@ -417,7 +448,10 @@ def _teardown(httpd, deps) -> None:
     loop = getattr(httpd, "_loop", None)
     agent = getattr(httpd, "_agent", None)
     webhook_client = getattr(httpd, "_webhook_client", None)
+    sched_future = getattr(httpd, "_sched_future", None)
     httpd.server_close()
+    if sched_future is not None:
+        sched_future.cancel()
     if loop is not None and agent is not None:
         if webhook_client is not None:
             try:

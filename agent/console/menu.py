@@ -601,11 +601,12 @@ def _prompt_set(env_file: Path, key: str, label: str) -> None:
     _set_env(env_file, key, value.strip())
 
 
-# ── In-app scheduler ─────────────────────────────────────────────────────────
-# Recurring tasks that fire ONLY while the agent is open (the live loop). Jobs
-# persist in the state store, so they're remembered between sessions. For runs
-# that must fire even when the terminal is closed, use an external scheduler
-# (cron / Task Scheduler) — see schedule.example.
+# ── In-app scheduler (menu live mode) ────────────────────────────────────────
+# Recurring tasks persist in the store under the shared `scheduled_jobs` key
+# (runtime/scheduler) — the same list the agent's schedule_task tool and the
+# background ticker (gateway · server) use. This menu mode fires them live while
+# it's open; for 24/7 firing without a terminal, run a bot / the server, or
+# external cron (see schedule.example).
 
 _INTERVALS = [
     ("every 30 seconds", 30),
@@ -614,15 +615,6 @@ _INTERVALS = [
     ("every 15 minutes", 900),
     ("every 1 hour", 3600),
 ]
-_JOBS_KEY = "scheduled_jobs"
-
-
-def _fmt_every(secs: int) -> str:
-    if secs % 3600 == 0:
-        return f"{secs // 3600}h"
-    if secs % 60 == 0:
-        return f"{secs // 60}m"
-    return f"{secs}s"
 
 
 def _clip(text: str, n: int) -> str:
@@ -634,15 +626,15 @@ def _scheduler(root) -> None:
     from ..runtime.config import load_config
     from ..runtime.context import build_deps, close_deps
     from ..engine.factory import build_agent
+    from ..runtime import scheduler
 
     config = load_config(root)
     deps = build_deps(config)
-    jobs: list[dict] = deps.store.get(_JOBS_KEY, []) or []
-
     try:
         while True:
+            jobs = scheduler.list_jobs(deps.store)
             summary = (
-                "  ·  ".join(f"{_fmt_every(j['every'])}: {_clip(j['task'], 18)}" for j in jobs)
+                "  ·  ".join(f"{scheduler.fmt_every(j['every'])}: {_clip(j['task'], 18)}" for j in jobs)
                 if jobs else "no jobs yet"
             )
             options = (["Run scheduler (live)"] if jobs else []) + ["Add job"]
@@ -655,18 +647,20 @@ def _scheduler(root) -> None:
 
             if picked == "Run scheduler (live)":
                 agent = build_agent(config)
-                _run_scheduler_live(agent, deps, jobs, config.model)
+                _run_scheduler_live(agent, deps)
             elif picked == "Add job":
-                _add_job(deps, jobs)
+                _add_job(deps)
             elif picked == "Remove job":
-                _remove_job(deps, jobs)
+                _remove_job(deps)
             else:
                 return
     finally:
         close_deps(deps)
 
 
-def _add_job(deps, jobs: list[dict]) -> None:
+def _add_job(deps) -> None:
+    from ..runtime import scheduler
+
     _clear()
     console.print("\n  [bold]New scheduled task[/]")
     console.print("  [dim]What should the agent do? Enter to confirm · Esc to cancel.[/]\n")
@@ -681,26 +675,30 @@ def _add_job(deps, jobs: list[dict]) -> None:
     else:
         raw = _edit_line("  seconds= ", "60") or "60"
         try:
-            secs = max(5, int(raw.strip()))
+            secs = max(scheduler.MIN_EVERY, int(raw.strip()))
         except ValueError:
             secs = 60
-    jobs.append({"task": task.strip(), "every": secs})
-    deps.store.set(_JOBS_KEY, jobs)
+    scheduler.add_job(deps.store, task.strip(), secs, deliver="all")
 
 
-def _remove_job(deps, jobs: list[dict]) -> None:
-    labels = [f"every {_fmt_every(j['every'])}  ·  {_clip(j['task'], 40)}" for j in jobs]
+def _remove_job(deps) -> None:
+    from ..runtime import scheduler
+
+    jobs = scheduler.list_jobs(deps.store)
+    labels = [f"[{j['id']}] every {scheduler.fmt_every(j['every'])}  ·  {_clip(j['task'], 40)}" for j in jobs]
     pick = select("Remove which job?", labels + ["Cancel"])
     if pick is not None and pick < len(jobs):
-        jobs.pop(pick)
-        deps.store.set(_JOBS_KEY, jobs)
+        scheduler.remove_job(deps.store, jobs[pick]["id"])
 
 
-def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
-    """Passive feed: fire each job on its interval until Ctrl+C. No input prompt."""
+def _run_scheduler_live(agent, deps) -> None:
+    """Passive feed: fire each due job on its interval until Ctrl+C. No prompt."""
+    from ..runtime import scheduler
+
     _clear()
+    jobs = scheduler.list_jobs(deps.store)
     lines = "\n".join(
-        f"[dim]every {_fmt_every(j['every']):>4}[/]  {_clip(j['task'], 56)}" for j in jobs
+        f"[dim]every {scheduler.fmt_every(j['every']):>4}[/]  {_clip(j['task'], 56)}" for j in jobs
     )
     console.print(
         Panel(
@@ -709,14 +707,11 @@ def _run_scheduler_live(agent, deps, jobs: list[dict], model: str) -> None:
             title="[dim]scheduler running[/]",
         )
     )
-    next_run = [time.monotonic() for _ in jobs]   # all due immediately on start
     try:
         while True:
-            now = time.monotonic()
-            for i, job in enumerate(jobs):
-                if now >= next_run[i]:
-                    _run_job(agent, deps, job)
-                    next_run[i] = time.monotonic() + job["every"]
+            for job in scheduler.due_jobs(deps.store):
+                _run_job(agent, deps, job)
+                scheduler.bump(deps.store, job["id"])
             time.sleep(1)
     except KeyboardInterrupt:
         console.print("\n  [dim]scheduler stopped[/]\n")

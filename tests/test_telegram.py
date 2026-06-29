@@ -136,7 +136,7 @@ def _make_gw(tmp_path, monkeypatch, allowlist=None, owner_id=None):
         tg["owner_id"] = owner_id
     settings = {"gateways": {"telegram": tg}}
     config = SimpleNamespace(root=tmp_path, settings=settings, usage_limits=None)
-    deps = SimpleNamespace(store=store)
+    deps = SimpleNamespace(store=store, extra={})
     gw = TelegramGateway(config, deps)
     gw._pipeline = Pipeline("telegram", _FakeAgent(), deps, settings)
     return gw, store
@@ -397,6 +397,51 @@ def test_monitor_records_blocked(tmp_path, monkeypatch):
     _run(gw, records, _update(1, "hi", 999))
     assert gw.monitor.blocked == ["999"]
     assert gw.monitor.messages == []
+    store.close()
+
+
+# ── scheduler tick + delivery (23e) ───────────────────────────────────────────
+
+def test_scheduler_tick_runs_and_delivers(tmp_path, monkeypatch):
+    from agent.runtime import scheduler
+
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=[555], owner_id=111)
+    job = scheduler.add_job(store, "ping", 60)
+    jobs = scheduler.list_jobs(store)
+    jobs[0]["next_run"] = 1                                # force due
+    store.set(scheduler.KEY, jobs)
+
+    records: list = []
+
+    async def go():
+        async with _mock_client(records) as c:
+            await gw._tick_scheduler(c)
+    asyncio.run(go())
+
+    assert scheduler.get_job(store, job["id"])["runs"] == 1       # job fired + bumped
+    sends = _sends(records)
+    assert {s["chat_id"] for s in sends} == {"555", "111"}        # allowlist + owner
+    assert all(s["text"].startswith("⏰") and "echo:ping" in s["text"] for s in sends)
+    store.close()
+
+
+def test_scheduler_tick_off_when_disabled(tmp_path, monkeypatch):
+    from agent.runtime import scheduler
+
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=[555])
+    gw._scheduler_on = False
+    scheduler.add_job(store, "ping", 60)
+    jobs = scheduler.list_jobs(store)
+    jobs[0]["next_run"] = 1
+    store.set(scheduler.KEY, jobs)
+    records: list = []
+
+    async def go():
+        async with _mock_client(records) as c:
+            await gw._tick_scheduler(c)
+    asyncio.run(go())
+
+    assert _sends(records) == [] and scheduler.list_jobs(store)[0]["runs"] == 0
     store.close()
 
 
