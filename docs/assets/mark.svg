@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- genesis-agent compact mark: double-line G, the same drafting language as
+       the ASCII box-drawing banner (╔═╗). Open tips, square caps, 7px twin gap. -->
+  <g fill="none" stroke="#10b981" stroke-width="2.8">
+    <path d="M52 12 H12 V52 H52 V32 H34"/>
+    <path d="M52 19 H19 V45 H45 V39 H34"/>
+  </g>
+</svg>
