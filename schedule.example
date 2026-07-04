@@ -1,6 +1,13 @@
-# ── Scheduling genesis-agent ───────────────────────────────────────────────────
-# The agent runs one-shot from a task string, so any external scheduler drives
-# recurring runs. No scheduler is baked into the core. Pick your platform below.
+# ── Scheduling genesis-agent (external, 24/7) ────────────────────────────────────
+# The agent HAS a built-in scheduler: ask it in chat ("summarize HN every 2
+# hours" → schedule_task / list_scheduled / cancel_scheduled), or add jobs in the
+# menu's Scheduler. Those jobs fire in the background while a long-lived process
+# is up — a gateway bot or the HTTP server (`--serve`) — and results are
+# delivered to all channels.
+#
+# THIS file is for the other case: recurring runs with NO long-lived process
+# (no bot, no server, terminal closed). An external scheduler drives one-shot
+# runs. Pick your platform below.
 #
 # Use scripts/run.sh / scripts/run.ps1 (they cd into the folder, find uv, and run
 # `agent <task>`). Do NOT use start.cmd for scheduling — it ends with `pause`.

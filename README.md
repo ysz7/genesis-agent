@@ -101,6 +101,10 @@ cd genesis-agent
 - **Messaging gateways** — chat with the agent from **Telegram** & **WhatsApp**
   (built into the core, no SDK). Per-user memory, deny-all access control, inbound
   media, and inline-button approvals (see [Gateways](#gateways-telegram--whatsapp)).
+- **Agent-managed scheduling** — ask in chat for recurring work ("summarize HN
+  every 2 hours"): the agent creates/lists/edits/cancels jobs itself, they fire in
+  the background while a bot or the server runs, and results are **delivered to
+  all channels** (see [Scheduling](#scheduling)).
 - **Observable** — optional [Logfire](https://logfire.pydantic.dev) tracing, a
   local JSONL run log, and an opt-in `pydantic-evals` harness for your vertical.
 - **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
@@ -126,7 +130,7 @@ enable). Every `settings.yaml` key:
 | Setting | What it does | Default |
 |---------|--------------|---------|
 | `name` | display name | ✅ on (folder name) |
-| `store` | cross-run state file (JSON / SQLite) | ✅ on (`state.json`) |
+| `store` | cross-run state file (JSON / SQLite) | ✅ on (`agent.sqlite` in the template; code falls back to `state.json`) |
 | `render_markdown` | render the final answer as Markdown in the console | ✅ on (default `true`) |
 | `workspace` | sandbox + state directory | ✅ on (`workspace`) |
 | `history_keep` | REPL turns kept between prompts | ✅ on (`40`) |
@@ -266,7 +270,7 @@ files with the same notes — this is just the consolidated reference.
 | Key | Default | What it does |
 |-----|---------|--------------|
 | `name` | folder name | display name |
-| `store` | `state.json` | state file in `workspace/` (`*.json` or `*.db` SQLite) |
+| `store` | `agent.sqlite` (template) | state file in `workspace/` (`*.json` or `*.sqlite`/`*.db`); SQLite is required for gateways, code default is `state.json` |
 | `retries` | `2` | Pydantic AI retries per failed tool/model call |
 | `max_tool_output` | `20000` | char cap on a tool's output (`run_shell`, `fetch_url`, HTML cleaner) |
 | `history_keep` | `40` | REPL messages kept between turns |

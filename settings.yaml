@@ -226,8 +226,9 @@ subagents:
   allow_authoring: true
 
 # ── Self-improvement (optional) ─────────────────────────────────────────────────
-# Lets the agent extend itself, all sandboxed to workspace/. OFF by default — a
-# fresh copy can't author or run self-written code. When enabled it gains:
+# Lets the agent extend itself, all sandboxed to workspace/. Shipped ON in this
+# template (set enabled: false to opt out — the agent then can't author skills,
+# tools, or lessons). When enabled it gains:
 # write_skill/read_skill (markdown procedures, no approval), remember (lessons
 # recalled next session), and write_tool/read_tool (Python tools that run ONLY
 # after validation AND a human approval; "always allow" grants persist in

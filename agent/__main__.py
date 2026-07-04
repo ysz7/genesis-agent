@@ -156,6 +156,9 @@ def _run_gateway(config, name: str) -> int:
         file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         root.addHandler(file_handler)
         root.setLevel(logging.INFO)
+        # httpx logs one INFO line per long-poll (~every 25s) — megabytes/month of
+        # noise that drowns "View log". Keep only its warnings/errors.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
         monitor = None
         if sys.stdout.isatty():
@@ -203,7 +206,7 @@ def _drain_cli_deliveries(deps) -> None:
     The REPL is not a runner — it only surfaces results produced by a gateway/the
     server (which share this store). Printed between prompts, once each.
     """
-    if not (deps.settings.get("scheduler") or {}).get("enabled", True):
+    if not (deps.settings.get("scheduler") or {}).get("enabled"):
         return
     from .runtime import scheduler
 

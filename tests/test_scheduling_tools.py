@@ -66,14 +66,24 @@ def test_list_empty(tmp_path):
 
 # ── registry wiring ───────────────────────────────────────────────────────────
 
-def test_tools_registered_by_default(tmp_path):
-    config = load_config(tmp_path)                       # no settings → default ON
-    names = tool_names(discover_tools(config))
+def test_tools_registered_when_enabled(tmp_path):
+    (tmp_path / "settings.yaml").write_text("scheduler:\n  enabled: true\n", encoding="utf-8")
+    names = tool_names(discover_tools(load_config(tmp_path)))
     for t in ("schedule_task", "list_scheduled", "cancel_scheduled", "edit_scheduled"):
         assert t in names
 
 
-def test_tools_off_when_disabled(tmp_path):
-    (tmp_path / "settings.yaml").write_text("scheduler:\n  enabled: false\n", encoding="utf-8")
-    names = tool_names(discover_tools(load_config(tmp_path)))
+def test_tools_off_by_code_default(tmp_path):
+    # Same opt-in pattern as planning/subagents: OFF in code, ON in the template
+    # settings.yaml — a minimal settings file must not silently grow tools.
+    names = tool_names(discover_tools(load_config(tmp_path)))    # no settings at all
     assert "schedule_task" not in names
+
+
+def test_template_settings_enable_scheduler():
+    # The shipped template turns the scheduler on (out-of-box behaviour).
+    import pathlib, yaml
+
+    template = pathlib.Path(__file__).resolve().parents[1] / "settings.yaml"
+    settings = yaml.safe_load(template.read_text(encoding="utf-8"))
+    assert (settings.get("scheduler") or {}).get("enabled") is True

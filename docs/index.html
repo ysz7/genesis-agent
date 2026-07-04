@@ -354,13 +354,14 @@
         <h3>A complete agent core</h3>
         <ul class="list">
           <li>Providers: OpenAI · Anthropic · OpenRouter · offline Ollama</li>
-          <li>Automatic tool discovery from <code>tools/*.py</code></li>
+          <li>Automatic tool discovery from <code>tools/*.py</code> + web search</li>
           <li>The agent loop, retries, usage limits, model tuning</li>
           <li>Memory + auto-compaction, JSON / SQLite state store</li>
           <li>Sandbox, tool policy, human approvals, server auth</li>
+          <li>Telegram &amp; WhatsApp gateways · built-in scheduler</li>
           <li>Live console · HTTP + SSE service · Docker · cron</li>
         </ul>
-        <p class="note">~3.8k lines of readable Python on Pydantic AI — small enough to read in an evening, simple enough to trust in production.</p>
+        <p class="note">~8k lines of readable Python on Pydantic AI — small enough to read in a sitting, simple enough to trust in production.</p>
       </div>
       <div class="card reveal">
         <div class="kicker">What you build</div>
@@ -418,6 +419,21 @@
         <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
         <h3>Any model, any runtime</h3>
         <p>Switch providers with one <code>.env</code> edit. Run in a terminal, as an HTTP service, in Docker, or on a schedule.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-3.7-.8L3 20l1-4.9a8.3 8.3 0 01-1-4A8.4 8.4 0 0112 3a8.4 8.4 0 019 8.5z"/></svg></div>
+        <h3>Messaging gateways</h3>
+        <p>Chat with your agent from Telegram or WhatsApp — per-user memory, deny-all access control, media in, approval buttons. No SDK, built into the core.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <h3>Agent-managed scheduling</h3>
+        <p>Ask for recurring work in chat — the agent schedules it, jobs fire in the background, and results are delivered to every channel.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+        <h3>Web-aware</h3>
+        <p>Built-in <code>web_search</code> (no API key) plus a URL fetcher that returns readable text — current info without extra wiring.</p>
       </div>
     </div>
   </div>

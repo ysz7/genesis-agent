@@ -111,10 +111,12 @@ def discover_tools(config: Config, exclude: set[str] | None = None) -> list[Call
 
         tools.extend(PLANNING_TOOLS)
 
-    # Scheduling (Phase 23): recurring tasks the agent creates from a chat. ON by
-    # default (set scheduler.enabled: false to opt out); jobs fire in the
+    # Scheduling (Phase 23): recurring tasks the agent creates from a chat. Same
+    # opt-in pattern as planning/subagents: OFF at the code level, turned on by
+    # the template settings.yaml (`scheduler.enabled: true`) — so an agent with a
+    # minimal/older settings file doesn't silently grow tools. Jobs fire in the
     # background while the server or a gateway bot is running.
-    if (config.settings.get("scheduler") or {}).get("enabled", True):
+    if (config.settings.get("scheduler") or {}).get("enabled"):
         from ..tools.scheduling import SCHEDULING_TOOLS
 
         tools.extend(SCHEDULING_TOOLS)

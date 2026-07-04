@@ -96,7 +96,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
     # Background scheduler (Phase 23): run due jobs (under the shared owner-lock)
     # and drain server-addressed deliveries (logged) while serving.
     sched_future = None
-    if (config.settings.get("scheduler") or {}).get("enabled", True):
+    if (config.settings.get("scheduler") or {}).get("enabled"):
         tick = float((config.settings.get("scheduler") or {}).get("tick", 30))
         owner = scheduler.default_owner_id()
 

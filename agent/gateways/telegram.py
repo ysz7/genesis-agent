@@ -267,7 +267,7 @@ class TelegramGateway(Gateway):
         self._bridge: ApprovalBridge | None = None
         # Background scheduler (Phase 23): this process can run due jobs (under the
         # shared owner-lock) and deliver results to its users.
-        self._scheduler_on = bool((config.settings.get("scheduler") or {}).get("enabled", True))
+        self._scheduler_on = bool((config.settings.get("scheduler") or {}).get("enabled"))
         self._owner_id = scheduler.default_owner_id()
         self._tick_ttl = max(60.0, (POLL_TIMEOUT + 10) * 2)
 

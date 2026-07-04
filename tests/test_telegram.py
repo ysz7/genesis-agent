@@ -134,7 +134,7 @@ def _make_gw(tmp_path, monkeypatch, allowlist=None, owner_id=None):
     tg = {"allowlist": allowlist or []}        # parse_mode defaults to html
     if owner_id is not None:
         tg["owner_id"] = owner_id
-    settings = {"gateways": {"telegram": tg}}
+    settings = {"gateways": {"telegram": tg}, "scheduler": {"enabled": True}}
     config = SimpleNamespace(root=tmp_path, settings=settings, usage_limits=None)
     deps = SimpleNamespace(store=store, extra={})
     gw = TelegramGateway(config, deps)
