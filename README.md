@@ -2,9 +2,9 @@
 
 <img src="docs/assets/banner.svg" alt="genesis-agent" width="520">
 
-**Skip the plumbing. Ship a specialized agent.**
+**Ship a specialized agent.**
 
-*A lightweight, finished base for AI agents — Copy · Configure · Run → your specialized agent is ready.*
+*A lightweight, finished base for AI agents — copy · configure · run.*
 
 ![CI](https://github.com/ysz7/genesis-agent/actions/workflows/ci.yml/badge.svg)
 ![Release](https://img.shields.io/github/v/tag/ysz7/genesis-agent?label=release&color=15c17c)
@@ -15,9 +15,9 @@
 ---
 
 You want your own AI agent — a trading desk, a research bot, a support
-automation. Building one from scratch isn't just plumbing; it's re-implementing
-the capabilities *every* serious agent needs — model wiring, tool calling,
-memory, planning, delegation, safety, deployment — before any real work begins.
+automation. Building one from scratch means re-implementing the capabilities
+*every* serious agent needs — model wiring, tool calling, memory, planning,
+delegation, safety, deployment — before any real work begins.
 
 **genesis-agent is that foundation, already built — and kept current with the
 frontier.** A clean, lightweight base for *any* vertical agent: copy the folder,
