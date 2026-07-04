@@ -36,7 +36,7 @@ def _make_gw(tmp_path, monkeypatch, allowlist=None):
     store = open_store(tmp_path / "agent.sqlite")
     settings = {"gateways": {"whatsapp": {"allowlist": allowlist or []}}}
     config = SimpleNamespace(root=tmp_path, settings=settings, usage_limits=None)
-    deps = SimpleNamespace(store=store)
+    deps = SimpleNamespace(store=store, extra={})
     gw = WhatsAppGateway(config, deps)
     gw._pipeline = Pipeline("whatsapp", _FakeAgent(), deps, settings)
     return gw, store
@@ -118,4 +118,198 @@ def test_run_refuses_polling(tmp_path, monkeypatch):
         assert False, "expected RuntimeError"
     except RuntimeError as exc:
         assert "webhook-only" in str(exc)
+    store.close()
+
+
+# ── formatting (25f) ──────────────────────────────────────────────────────────
+
+def test_to_whatsapp_formatting():
+    from agent.gateways.whatsapp import to_whatsapp
+
+    out = to_whatsapp("**bold** and *ital* and `code`\n# Head\n[t](https://x.y)")
+    assert "*bold*" in out                       # ** → *
+    assert "_ital_" in out                       # * → _
+    assert "```code```" in out                   # inline code → monospace
+    assert "*Head*" in out                       # heading → bold
+    assert "t (https://x.y)" in out              # link flattened
+    assert "**" not in out and "#" not in out
+
+
+def test_outbound_uses_whatsapp_formatting(tmp_path, monkeypatch):
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=["999"])
+    records: list = []
+
+    async def go():
+        async with _mock_client(records) as c:
+            await gw.send_message(c, "999", "**hi** there")
+    asyncio.run(go())
+
+    body = [b for p, b in records if p.endswith("/messages")][0]["text"]["body"]
+    assert body == "*hi* there"
+    store.close()
+
+
+# ── management commands (25b) ─────────────────────────────────────────────────
+
+def test_owner_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("WHATSAPP_OWNER_ID", "111")
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=[])
+    records: list = []
+
+    async def go(update):
+        async with _mock_client(records) as c:
+            await gw.handle_update(c, update)
+
+    asyncio.run(go(_inbound("/allow 222", "111")))              # owner bootstraps
+    sent = [b for p, b in records if p.endswith("/messages")]
+    assert "Allowed 222" in sent[-1]["text"]["body"]
+
+    records.clear()
+    asyncio.run(go(_inbound("hello", "222")))                    # 222 now allowed
+    sent = [b for p, b in records if p.endswith("/messages")]
+    assert sent[-1]["text"]["body"] == "echo:hello"
+
+    records.clear()
+    asyncio.run(go(_inbound("/whoami", "222")))
+    sent = [b for p, b in records if p.endswith("/messages")]
+    assert "222" in sent[-1]["text"]["body"] and "number" in sent[-1]["text"]["body"]
+
+    records.clear()
+    asyncio.run(go(_inbound("/allow 333", "222")))               # non-owner blocked
+    sent = [b for p, b in records if p.endswith("/messages")]
+    assert sent[-1]["text"]["body"] == "Owner only."
+    store.close()
+
+
+# ── inbound media (25c) ───────────────────────────────────────────────────────
+
+def _media_inbound(frm="999"):
+    return {"entry": [{"changes": [{"value": {"messages": [
+        {"from": frm, "id": "wamid.1", "type": "image",
+         "image": {"id": "MEDIA1", "mime_type": "image/jpeg", "caption": "what is this?"}}
+    ]}}]}]}
+
+
+def test_whatsapp_media_extraction():
+    from agent.gateways.whatsapp import whatsapp_media
+
+    msg = {"type": "image", "image": {"id": "M1", "mime_type": "image/jpeg"}}
+    assert whatsapp_media(msg) == [("M1", "image.jpg")]
+    doc = {"type": "document", "document": {"id": "D1", "filename": "r.pdf"}}
+    assert whatsapp_media(doc) == [("D1", "r.pdf")]
+    assert whatsapp_media({"type": "text"}) == []
+
+
+def test_photo_downloaded_and_attached(tmp_path, monkeypatch):
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=["999"])
+    records: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/MEDIA1"):                              # media metadata
+            return httpx.Response(200, json={"url": "https://cdn.meta/x.jpg"})
+        if "cdn.meta" in str(request.url):                        # the binary
+            return httpx.Response(200, content=b"\xff\xd8\xffJFIF-bytes")
+        records.append((path, json.loads(request.content or b"{}")))
+        return httpx.Response(200, json={})
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            await gw.handle_update(c, _media_inbound())
+    asyncio.run(go())
+
+    from pydantic_ai import BinaryContent
+
+    prompt = gw._pipeline.agent.prompts[0]
+    assert isinstance(prompt, list)                               # multimodal prompt
+    assert any(isinstance(p, BinaryContent) for p in prompt)
+    store.close()
+
+
+# ── approval buttons (25d) ────────────────────────────────────────────────────
+
+def test_button_reply_resolves_bridge(tmp_path, monkeypatch):
+    from agent.gateways.whatsapp import WhatsAppApprovalBridge
+
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=["999"])
+    gw._bridge = WhatsAppApprovalBridge(gw)
+    seen = {}
+    gw._bridge.resolve = lambda payload: seen.setdefault("p", payload)  # spy
+
+    update = {"entry": [{"changes": [{"value": {"messages": [
+        {"from": "999", "type": "interactive",
+         "interactive": {"type": "button_reply", "button_reply": {"id": "ap:once:abc", "title": "Allow"}}}
+    ]}}]}]}
+
+    async def go():
+        async with _mock_client([]) as c:
+            await gw.handle_update(c, update)
+    asyncio.run(go())
+
+    assert seen["p"] == "ap:once:abc"
+    assert gw._pipeline.agent.prompts == []                       # never hit the agent
+    store.close()
+
+
+def test_send_buttons_payload(tmp_path, monkeypatch):
+    from agent.gateways.whatsapp import WhatsAppApprovalBridge
+
+    gw, store = _make_gw(tmp_path, monkeypatch)
+    bridge = WhatsAppApprovalBridge(gw)
+    records: list = []
+
+    async def go():
+        async with _mock_client(records) as c:
+            await bridge.send_buttons(c, "999", "run_shell", "rm -rf /x", "abc")
+    asyncio.run(go())
+
+    payload = [b for p, b in records if p.endswith("/messages")][0]
+    btns = payload["interactive"]["action"]["buttons"]
+    assert [b["reply"]["id"] for b in btns] == ["ap:once:abc", "ap:always:abc", "ap:deny:abc"]
+    store.close()
+
+
+# ── Meta signature (25e) ──────────────────────────────────────────────────────
+
+def test_signature_verification(tmp_path, monkeypatch):
+    import hashlib as _hashlib
+    import hmac as _hmac
+
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "app-secret")
+    gw, store = _make_gw(tmp_path, monkeypatch)
+    raw = b'{"entry": []}'
+    good = "sha256=" + _hmac.new(b"app-secret", raw, _hashlib.sha256).hexdigest()
+    assert gw.webhook_authorized({"x-hub-signature-256": good}, raw, None) is True
+    assert gw.webhook_authorized({"x-hub-signature-256": "sha256=bad"}, raw, None) is False
+    assert gw.webhook_authorized({}, raw, None) is False
+    store.close()
+
+
+def test_signature_open_without_app_secret(tmp_path, monkeypatch):
+    monkeypatch.delenv("WHATSAPP_APP_SECRET", raising=False)
+    gw, store = _make_gw(tmp_path, monkeypatch)
+    assert gw.webhook_authorized({}, b"{}", "generic") is True    # Meta can't send it
+    store.close()
+
+
+# ── scheduled delivery (25a) ──────────────────────────────────────────────────
+
+def test_deliver_pending_sends_to_allowlist(tmp_path, monkeypatch):
+    from agent.runtime import scheduler
+
+    monkeypatch.setenv("WHATSAPP_OWNER_ID", "111")
+    gw, store = _make_gw(tmp_path, monkeypatch, allowlist=["999"])
+    job = scheduler.add_job(store, "ping", 60)
+    scheduler.enqueue_delivery(store, job, "the result")
+    records: list = []
+
+    async def go():
+        async with _mock_client(records) as c:
+            await gw.deliver_pending(c)
+    asyncio.run(go())
+
+    sent = [b for p, b in records if p.endswith("/messages")]
+    assert {s["to"] for s in sent} == {"999", "111"}              # allowlist + owner
+    assert all("the result" in s["text"]["body"] for s in sent)
+    assert scheduler.pending_for(store, "whatsapp") == []         # marked consumed
     store.close()

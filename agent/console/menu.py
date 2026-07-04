@@ -386,9 +386,11 @@ def _pause() -> None:
 
 # ── Gateways (messaging channels) ─────────────────────────────────────────────
 
-def _gw_label(config, name: str) -> str:
+def _gw_label(config, name: str, cls=None) -> str:
     from ..gateways import manager
 
+    if cls is not None and getattr(cls, "webhook_only", False):
+        return f"{name}  ·  webhook-only (runs under --serve)"
     st = manager.status(config, name)
     return f"{name}  ·  " + (f"running (pid {st['pid']})" if st["running"] else "stopped")
 
@@ -415,7 +417,7 @@ def _gateways(root: Path) -> None:
         names = sorted(classes)
         while True:
             warn = store_guard(deps.store)
-            options = [_gw_label(config, n) for n in names] + ["Back"]
+            options = [_gw_label(config, n, classes[n]) for n in names] + ["Back"]
             sub = warn or "a channel runs as its own process — survives leaving the menu"
             choice = select("Gateways  —  messaging channels", options, subtitle=_clip(sub, 70))
             if choice is None or choice >= len(names):
@@ -432,6 +434,7 @@ def _gateway_actions(config, deps, name: str, cls) -> None:
     env_file = config.root / ".env"
     token_env = getattr(cls, "token_env", "")
     owner_env = getattr(cls, "owner_env", "")
+    webhook_only = getattr(cls, "webhook_only", False)
 
     while True:
         st = manager.status(config, name)
@@ -439,7 +442,9 @@ def _gateway_actions(config, deps, name: str, cls) -> None:
         env = _read_env(env_file)
         token_val = (env.get(token_env) or os.getenv(token_env, "")) if token_env else ""
 
-        rows = ["Stop" if running else "Start", "View log"]
+        # Webhook-only channels (WhatsApp) have no local process to start — they
+        # mount on `agent --serve`; here you only manage keys and the allowlist.
+        rows = [] if webhook_only else ["Stop" if running else "Start", "View log"]
         if token_env:
             rows.append(f"Token     · {_mask(token_val)}")
         if owner_env:
@@ -447,7 +452,10 @@ def _gateway_actions(config, deps, name: str, cls) -> None:
         rows += ["Manage allowlist", "Back"]
 
         guard = store_guard(deps.store)
-        sub = guard or (f"running (pid {st['pid']})" if running else "stopped")
+        sub = guard or (
+            "webhook-only — enable in settings.yaml and run `agent --serve`"
+            if webhook_only else (f"running (pid {st['pid']})" if running else "stopped")
+        )
         choice = select(f"Gateway · {name}", rows, subtitle=_clip(sub, 70))
         if choice is None:
             return

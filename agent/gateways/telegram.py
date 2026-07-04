@@ -20,15 +20,13 @@ import logging
 import os
 import re
 import tempfile
-import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from .base import Gateway, Inbound, Pipeline, Quota, store_guard
+from .base import ApprovalBridgeBase, Gateway, Inbound, store_guard
 from ..runtime import scheduler
 
 logger = logging.getLogger("agent.gateways.telegram")
@@ -168,78 +166,28 @@ def telegram_media(msg: dict) -> list[tuple[str, str]]:
     return out
 
 
-# ── inline-button approvals (Phase 22h) ───────────────────────────────────────
+# ── inline-button approvals (Phase 22h; core shared in base.py) ───────────────
 
-class ApprovalBridge:
-    """Routes a tool approval to the chat as Allow/Always/Deny inline buttons.
+class ApprovalBridge(ApprovalBridgeBase):
+    """Telegram flavor: an inline keyboard + ``callback_query`` resolution."""
 
-    The agent's confirm gate is a **synchronous** ``deps.approval_hook`` invoked
-    from inside a tool (which Pydantic AI runs in a worker thread for sync tools).
-    From that thread we send the buttons on the gateway's event loop, then block
-    on a ``threading.Event`` until the matching ``callback_query`` arrives (the
-    poll loop keeps running on the loop thread, so it can deliver it) or a timeout
-    elapses — on timeout the decision is ``"deny"``. Returns ``once|always|deny``,
-    exactly what the hook contract expects.
-    """
-
-    def __init__(self, gateway: "TelegramGateway"):
-        self.gw = gateway
-        self.timeout = float(gateway.conf.get("approval_timeout", 120))
-        self._pending: dict[str, dict] = {}
-        self._lock = threading.Lock()
-        self._client: httpx.AsyncClient | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
-
-    def bind(self, client: httpx.AsyncClient, loop: asyncio.AbstractEventLoop) -> None:
-        self._client, self._loop = client, loop
-
-    def hook_for(self, chat_id: int):
-        """A sync ``(subject, detail) -> decision`` hook bound to *chat_id*."""
-        def hook(subject: str, detail: str) -> str:
-            return self._request(chat_id, subject, detail)
-        return hook
-
-    def _request(self, chat_id: int, subject: str, detail: str) -> str:
-        if self._loop is None or self._client is None:
-            return "deny"
-        rid = uuid.uuid4().hex[:8]
-        event = threading.Event()
-        with self._lock:
-            self._pending[rid] = {"event": event, "decision": "deny"}
-        asyncio.run_coroutine_threadsafe(
-            self._send_buttons(chat_id, subject, detail, rid), self._loop
-        )
-        event.wait(self.timeout)
-        with self._lock:
-            return self._pending.pop(rid, {}).get("decision", "deny")
-
-    async def _send_buttons(self, chat_id: int, subject: str, detail: str, rid: str) -> None:
+    async def send_buttons(self, client, chat_id, subject: str, detail: str, rid: str) -> None:
         text = chunk_text(f"Approve this action?\n\n{subject}\n{detail}".strip())[0]
         keyboard = {"inline_keyboard": [[
             {"text": "✅ Allow once", "callback_data": f"ap:once:{rid}"},
             {"text": "♾ Always", "callback_data": f"ap:always:{rid}"},
             {"text": "❌ Deny", "callback_data": f"ap:deny:{rid}"},
         ]]}
-        try:
-            await self._client.post(
-                self.gw._api("sendMessage"),
-                json={"chat_id": chat_id, "text": text, "reply_markup": keyboard},
-            )
-        except Exception as exc:  # noqa: BLE001 - a failed prompt just denies on timeout
-            logger.warning("could not send approval prompt: %s", exc)
+        await client.post(
+            self.gw._api("sendMessage"),
+            json={"chat_id": chat_id, "text": text, "reply_markup": keyboard},
+        )
 
     async def handle_callback(self, client: httpx.AsyncClient, callback: dict) -> None:
         """Resolve an approval from a ``callback_query`` and acknowledge it."""
-        data = str(callback.get("data") or "")
-        parts = data.split(":")
-        if len(parts) != 3 or parts[0] != "ap":
+        decision = self.resolve(callback.get("data"))
+        if decision is None:
             return
-        _, decision, rid = parts
-        with self._lock:
-            entry = self._pending.get(rid)
-            if entry is not None:
-                entry["decision"] = decision
-                entry["event"].set()
         try:
             await client.post(
                 self.gw._api("answerCallbackQuery"),
@@ -255,20 +203,16 @@ class TelegramGateway(Gateway):
     name = "telegram"
     token_env = TOKEN_ENV
     owner_env = "TELEGRAM_OWNER_ID"
+    id_label = "Telegram id"
 
     def __init__(self, config: Any, deps: Any):
         super().__init__(config, deps)
         self.token = os.getenv(TOKEN_ENV) or ""
-        # The owner is always allowed (bootstrap) and is the only id that may run
-        # management commands. From settings `owner_id` or env TELEGRAM_OWNER_ID.
-        self.owner_id = str(self.conf.get("owner_id") or os.getenv("TELEGRAM_OWNER_ID") or "")
-        self._quota = Quota(deps.store, self.name, self.conf.get("max_messages_per_day"))
-        self._pipeline: Pipeline | None = None
         self._bridge: ApprovalBridge | None = None
         # Background scheduler (Phase 23): this process can run due jobs (under the
         # shared owner-lock) and deliver results to its users.
         self._scheduler_on = bool((config.settings.get("scheduler") or {}).get("enabled"))
-        self._owner_id = scheduler.default_owner_id()
+        self._runner_id = scheduler.default_owner_id()
         self._tick_ttl = max(60.0, (POLL_TIMEOUT + 10) * 2)
 
     # configuration ------------------------------------------------------------
@@ -282,12 +226,16 @@ class TelegramGateway(Gateway):
         info = super().status_info()
         tok = self.token
         info["token"] = (tok[:6] + "…" + tok[-4:]) if len(tok) > 12 else "(set)"
-        if self.owner_id:
-            info["owner"] = self.owner_id
         return info
 
     def _api(self, method: str) -> str:
         return f"{API_ROOT}/bot{self.token}/{method}"
+
+    def on_mounted(self, client: Any, loop: Any) -> None:
+        """Server hook (webhook mode): approval buttons work there too."""
+        if str(self.conf.get("approvals", "buttons")).lower() == "buttons":
+            self._bridge = ApprovalBridge(self)
+            self._bridge.bind(client, loop)
 
     # transport ----------------------------------------------------------------
 
@@ -359,17 +307,17 @@ class TelegramGateway(Gateway):
             return
         chat_id, inbound = norm
 
-        if not (self.access.allowed(inbound.user_id) or self._is_owner(inbound.user_id)):
+        if not self.user_allowed(inbound.user_id):
             if self.monitor is not None:
                 self.monitor.on_blocked(inbound.user_id)
-            await self.send_message(client, chat_id, self._denied_text(inbound.user_id))
+            await self.send_message(client, chat_id, self.denied_text(inbound.user_id))
             return
 
         if self.monitor is not None:
             self.monitor.on_message(inbound.user_id, inbound.user_name, inbound.text)
 
         # Management / convenience commands short-circuit the agent.
-        reply = self._handle_command(inbound)
+        reply = self.handle_command(inbound)
         if reply is not None:
             if self.monitor is not None:
                 self.monitor.on_reply(True, 0, 0.0, reply)
@@ -457,79 +405,23 @@ class TelegramGateway(Gateway):
         out.write_bytes(data.content)
         return str(out)
 
-    def _is_owner(self, user_id: Any) -> bool:
-        return bool(self.owner_id) and str(user_id) == self.owner_id
-
-    def _handle_command(self, inbound: Inbound) -> str | None:
-        """Return a reply for a ``/command``, or None to let the agent handle the text.
-
-        ``/whoami`` and ``/help`` are for any allowed user; ``/allow``, ``/deny`` and
-        ``/allowlist`` are owner-only and manage the deny-all allowlist live. An
-        unrecognized ``/command`` falls through to the agent (returns None).
-        """
-        text = (inbound.text or "").strip()
-        if not text.startswith("/"):
-            return None
-        parts = text.split()
-        cmd = parts[0][1:].split("@", 1)[0].lower()   # strip leading / and @BotName
-        arg = parts[1].strip() if len(parts) > 1 else ""
-
-        if cmd == "whoami":
-            return f"Your Telegram id: {inbound.user_id}"
-        if cmd in ("start", "help"):
-            extra = " · /allow <id> · /deny <id> · /allowlist" if self._is_owner(inbound.user_id) else ""
-            return f"Commands: /whoami{extra}\nSend me a message and I'll answer."
-        if cmd in ("allow", "deny", "allowlist", "allowed"):
-            if not self._is_owner(inbound.user_id):
-                return "Owner only."
-            if cmd == "allow":
-                if not arg:
-                    return "usage: /allow <id>"
-                self.access.allow(arg)
-                return f"Allowed {arg}."
-            if cmd == "deny":
-                if not arg:
-                    return "usage: /deny <id>"
-                ok = self.access.deny(arg)
-                return f"Removed {arg}." if ok else f"Cannot revoke {arg} — it is seeded in settings.yaml."
-            ids = self.access.listing()
-            return "Allowed ids: " + (", ".join(ids) if ids else "(none)")
-        return None
-
-    def _denied_text(self, user_id: str) -> str:
-        return (
-            "Access is closed for this bot.\n"
-            f"Your Telegram id is {user_id} — ask the owner to allow it."
-        )
-
     # scheduler (Phase 23) ----------------------------------------------------
 
     async def _tick_scheduler(self, client: httpx.AsyncClient) -> None:
         """Run due jobs (if we hold the lock) and deliver pending results."""
         if not self._scheduler_on or self._pipeline is None:
             return
-        store = self.deps.store
         try:
             await scheduler.run_due_jobs(
-                store, self._pipeline.agent, self.deps,
-                owner_id=self._owner_id, ttl=self._tick_ttl,
+                self.deps.store, self._pipeline.agent, self.deps,
+                owner_id=self._runner_id, ttl=self._tick_ttl,
                 usage_limits=getattr(self.config, "usage_limits", None),
                 on_fire=self._on_job_fire,
             )
         except Exception as exc:  # noqa: BLE001 - a bad tick must not kill the bot
             logger.warning("scheduler tick failed: %s", exc)
         # Deliver results addressed to telegram → every allowlisted user + owner.
-        recipients = self._delivery_recipients()
-        for rec in scheduler.pending_for(store, self.name):
-            for chat in recipients:
-                await self.send_message(client, chat, f"⏰ {rec['text']}")
-            scheduler.mark_delivered(store, rec["id"], self.name)
-
-    def _delivery_recipients(self) -> list[str]:
-        ids = [str(i) for i in self.access.listing()]
-        if self.owner_id and self.owner_id not in ids:
-            ids.append(self.owner_id)
-        return ids
+        await self.deliver_pending(client)
 
     def _on_job_fire(self, job: dict, text: str, ok: bool) -> None:
         if self.monitor is not None:

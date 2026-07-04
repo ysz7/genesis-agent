@@ -8,6 +8,31 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Added
+- **WhatsApp parity with Telegram** — the WhatsApp gateway grew from a text-only
+  skeleton to full functional parity: owner + management commands (`/allow`,
+  `/deny`, `/allowlist`, `/whoami`), inbound media (image/document/voice →
+  vision parts or inlined text), tool approvals as interactive **reply buttons**
+  (Allow once / Always / Deny), scheduled-result delivery to all allowlisted
+  numbers (drained by the server's scheduler ticker), Meta webhook signature
+  verification (`X-Hub-Signature-256` with `WHATSAPP_APP_SECRET`), and replies
+  rendered in WhatsApp's native formatting (`*bold*`, `_italic_`, ``` code ```).
+  Platform constraint: Meta Cloud API is webhook-only, so WhatsApp always runs
+  under `agent --serve` (the Gateways menu marks it webhook-only).
+- Telegram approval buttons now also work in **webhook mode** (previously
+  long-poll only) — gateways get an `on_mounted` hook when mounted on the server.
+
+### Changed
+- Shared gateway logic (owner/commands/denied-text, delivery fan-out, the
+  approval-bridge core) moved into `gateways/base.py` — a new channel implements
+  only transport, formatting and buttons.
+- The scheduler tools now follow the same opt-in pattern as every other feature:
+  OFF at the code level, ON in the template `settings.yaml` (out-of-box behaviour
+  unchanged; agents with minimal settings no longer silently grow tools).
+- Gateway process logs no longer record one `httpx` INFO line per poll.
+
 ## [1.2.1] — 2026-06-29
 
 ### Added

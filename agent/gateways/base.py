@@ -19,7 +19,11 @@ Key invariants (locked design decisions):
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
+import threading
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -251,6 +255,78 @@ class Pipeline:
         return _as_text(result.output)
 
 
+# ── approval bridge core (shared button-approvals, Phase 22h/25d) ─────────────
+
+class ApprovalBridgeBase:
+    """Routes a tool approval to a chat as Allow / Always / Deny buttons.
+
+    The agent's confirm gate is a **synchronous** ``deps.approval_hook`` invoked
+    from inside a tool (Pydantic AI runs sync tools in a worker thread). From that
+    thread we send the buttons on the gateway's event loop, then block on a
+    ``threading.Event`` until the channel's callback arrives or a timeout elapses
+    — on timeout the decision is ``"deny"``. Returns ``once|always|deny``, exactly
+    the hook contract.
+
+    Subclasses implement :meth:`send_buttons` (channel-specific UI) and call
+    :meth:`resolve` from their inbound callback parsing. The ``ap:<decision>:<rid>``
+    payload format is shared so both sides agree.
+    """
+
+    def __init__(self, gateway: "Gateway"):
+        self.gw = gateway
+        self.timeout = float(gateway.conf.get("approval_timeout", 120))
+        self._pending: dict[str, dict] = {}
+        self._lock = threading.Lock()
+        self._client: Any = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def bind(self, client: Any, loop: asyncio.AbstractEventLoop) -> None:
+        self._client, self._loop = client, loop
+
+    def hook_for(self, recipient: Any):
+        """A sync ``(subject, detail) -> decision`` hook bound to *recipient*."""
+        def hook(subject: str, detail: str) -> str:
+            return self._request(recipient, subject, detail)
+        return hook
+
+    def _request(self, recipient: Any, subject: str, detail: str) -> str:
+        if self._loop is None or self._client is None:
+            return "deny"
+        rid = uuid.uuid4().hex[:8]
+        event = threading.Event()
+        with self._lock:
+            self._pending[rid] = {"event": event, "decision": "deny"}
+        asyncio.run_coroutine_threadsafe(
+            self._safe_send(recipient, subject, detail, rid), self._loop
+        )
+        event.wait(self.timeout)
+        with self._lock:
+            return self._pending.pop(rid, {}).get("decision", "deny")
+
+    async def _safe_send(self, recipient: Any, subject: str, detail: str, rid: str) -> None:
+        try:
+            await self.send_buttons(self._client, recipient, subject, detail, rid)
+        except Exception as exc:  # noqa: BLE001 - a failed prompt just denies on timeout
+            logger.warning("could not send approval prompt: %s", exc)
+
+    def resolve(self, payload: str) -> str | None:
+        """Resolve a callback payload ``ap:<decision>:<rid>``; returns the decision."""
+        parts = str(payload or "").split(":")
+        if len(parts) != 3 or parts[0] != "ap":
+            return None
+        _, decision, rid = parts
+        with self._lock:
+            entry = self._pending.get(rid)
+            if entry is not None:
+                entry["decision"] = decision
+                entry["event"].set()
+        return decision
+
+    async def send_buttons(self, client: Any, recipient: Any, subject: str, detail: str, rid: str) -> None:
+        """Send the Allow once / Always / Deny prompt (subclasses implement)."""
+        raise NotImplementedError
+
+
 # ── gateway base ──────────────────────────────────────────────────────────────
 
 class Gateway(ABC):
@@ -266,22 +342,119 @@ class Gateway(ABC):
     # Empty means the channel has no such key.
     token_env: str = ""
     owner_env: str = ""
+    # True for channels with no local transport (no long-poll): they run only as
+    # webhook routes under `--serve`. The menu hides Start/Stop for these.
+    webhook_only: bool = False
+    # How this channel names a user in refusals/commands ("Telegram id", "number").
+    id_label: str = "id"
 
     def __init__(self, config: Any, deps: Any):
         self.config = config
         self.deps = deps
         self.conf = gateway_settings(config.settings, self.name)
         self.access = AccessControl(deps.store, self.name, self.conf.get("allowlist"))
+        # The owner is always allowed (bootstrap) and is the only user who may run
+        # management commands. From settings `owner_id` or the channel's env var.
+        self.owner_id = str(
+            self.conf.get("owner_id")
+            or (os.getenv(self.owner_env) if self.owner_env else "")
+            or ""
+        )
+        self._quota = Quota(deps.store, self.name, self.conf.get("max_messages_per_day"))
+        self._pipeline: Pipeline | None = None
         # Optional rich live feed (set by the CLI on a console); None = headless.
         self.monitor: Any = None
 
     def status_info(self) -> dict:
         """Banner fields for the monitor. Subclasses add channel-specific keys."""
-        return {
+        info = {
             "allowed": len(self.access.listing()),
             "store": getattr(getattr(self.deps, "store", None), "path", ""),
             "model": getattr(self.config, "model", ""),
         }
+        if self.owner_id:
+            info["owner"] = self.owner_id
+        return info
+
+    # ── access + management commands (shared by every channel) ────────────────
+
+    def is_owner(self, user_id: Any) -> bool:
+        return bool(self.owner_id) and str(user_id) == self.owner_id
+
+    def user_allowed(self, user_id: Any) -> bool:
+        """Deny-all allowlist plus the owner bootstrap."""
+        return self.access.allowed(user_id) or self.is_owner(user_id)
+
+    def denied_text(self, user_id: Any) -> str:
+        return (
+            "Access is closed for this bot.\n"
+            f"Your {self.id_label} is {user_id} — ask the owner to allow it."
+        )
+
+    def handle_command(self, inbound: "Inbound") -> str | None:
+        """Return a reply for a ``/command``, or None to let the agent handle it.
+
+        ``/whoami`` and ``/help`` are for any allowed user; ``/allow``, ``/deny``
+        and ``/allowlist`` are owner-only and manage the deny-all allowlist live.
+        An unrecognized ``/command`` falls through to the agent (returns None).
+        """
+        text = (inbound.text or "").strip()
+        if not text.startswith("/"):
+            return None
+        parts = text.split()
+        cmd = parts[0][1:].split("@", 1)[0].lower()   # strip leading / and @BotName
+        arg = parts[1].strip() if len(parts) > 1 else ""
+
+        if cmd == "whoami":
+            return f"Your {self.id_label}: {inbound.user_id}"
+        if cmd in ("start", "help"):
+            extra = " · /allow <id> · /deny <id> · /allowlist" if self.is_owner(inbound.user_id) else ""
+            return f"Commands: /whoami{extra}\nSend me a message and I'll answer."
+        if cmd in ("allow", "deny", "allowlist", "allowed"):
+            if not self.is_owner(inbound.user_id):
+                return "Owner only."
+            if cmd == "allow":
+                if not arg:
+                    return "usage: /allow <id>"
+                self.access.allow(arg)
+                return f"Allowed {arg}."
+            if cmd == "deny":
+                if not arg:
+                    return "usage: /deny <id>"
+                ok = self.access.deny(arg)
+                return f"Removed {arg}." if ok else f"Cannot revoke {arg} — it is seeded in settings.yaml."
+            ids = self.access.listing()
+            return "Allowed ids: " + (", ".join(ids) if ids else "(none)")
+        return None
+
+    # ── scheduled-result delivery (Phase 23/25a) ───────────────────────────────
+
+    def delivery_recipients(self) -> list[str]:
+        """Who receives scheduled-task results: every allowlisted user + owner."""
+        ids = [str(i) for i in self.access.listing()]
+        if self.owner_id and self.owner_id not in ids:
+            ids.append(self.owner_id)
+        return ids
+
+    async def deliver_pending(self, client: Any) -> None:
+        """Send this channel's pending scheduled-task results and mark them.
+
+        Called from the channel's own loop (Telegram long-poll) or the server's
+        scheduler ticker (webhook-only channels like WhatsApp). The per-channel
+        ``consumed`` marker makes delivery at-most-once per channel.
+        """
+        from ..runtime import scheduler
+
+        store = self.deps.store
+        recipients = self.delivery_recipients()
+        for rec in scheduler.pending_for(store, self.name):
+            for recipient in recipients:
+                await self.send_message(client, recipient, f"⏰ {rec['text']}")
+            scheduler.mark_delivered(store, rec["id"], self.name)
+
+    async def send_message(self, client: Any, recipient: Any, text: str) -> None:
+        """Send *text* to *recipient* on this channel (subclasses implement)."""
+        raise NotImplementedError
 
     def validate(self) -> str | None:
         """Return an error message if the channel is misconfigured, else ``None``."""
@@ -301,6 +474,29 @@ class Gateway(ABC):
         GET handshake (Telegram uses POST only).
         """
         return None
+
+    def webhook_authorized(self, headers: Any, raw_body: bytes, generic_secret: str | None) -> bool:
+        """Authenticate an inbound ``POST /webhook/<name>`` (channel-specific).
+
+        Default: when ``WEBHOOK_SECRET`` is configured, require the platform's
+        secret header to match (Telegram sends it back as
+        ``X-Telegram-Bot-Api-Secret-Token`` when registered with ``secret_token``).
+        Channels with their own signing scheme (Meta's ``X-Hub-Signature-256``)
+        override this.
+        """
+        if not generic_secret:
+            return True
+        import hmac as _hmac
+
+        got = headers.get("x-telegram-bot-api-secret-token", "")
+        return len(got) == len(generic_secret) and _hmac.compare_digest(got, generic_secret)
+
+    def on_mounted(self, client: Any, loop: Any) -> None:
+        """Server hook: called once when mounted as a webhook on ``--serve``.
+
+        Channels use it to bind resources that need the shared client/loop (e.g.
+        the approval-buttons bridge). Default: nothing.
+        """
 
     @abstractmethod
     async def run(self) -> None:

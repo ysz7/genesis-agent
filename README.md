@@ -531,10 +531,25 @@ is reachable at `POST /webhook/<name>`:
         -d "secret_token=$WEBHOOK_SECRET"
    ```
 
-**WhatsApp** is webhook-only (Meta Cloud API), so it always runs this way: set
-`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN` in `.env`, enable
-`gateways.whatsapp`, and point Meta's webhook at `https://<host>/webhook/whatsapp`
-(the `GET` verification handshake is handled; the `POST` carries messages).
+### WhatsApp (webhook-only)
+
+WhatsApp has full functional parity with Telegram — owner commands
+(`/allow` · `/deny` · `/allowlist` · `/whoami`), inbound media (image / document /
+voice → vision or inlined text), approval **reply buttons** (Allow once / Always /
+Deny), per-user quota, scheduled-result delivery to all allowlisted numbers, and
+replies rendered in WhatsApp's own formatting (`*bold*`, `_italic_`,
+```` ```code``` ````). The one platform difference: **Meta Cloud API is
+webhook-only** — there is no long-poll, so WhatsApp always runs mounted on
+`agent --serve` behind a public HTTPS URL (the menu shows it as webhook-only):
+
+1. `.env`: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN` (the
+   handshake string you choose), `WHATSAPP_APP_SECRET` (sign-off for inbound
+   posts — set it in production), optional `WHATSAPP_OWNER_ID`.
+2. `settings.yaml`: `store: agent.sqlite` + `gateways.whatsapp.enabled: true`.
+3. Run `agent --serve` behind HTTPS and point Meta's webhook at
+   `https://<host>/webhook/whatsapp` — the `GET` verification handshake is
+   handled; `POST`s are verified against `X-Hub-Signature-256` when
+   `WHATSAPP_APP_SECRET` is set.
 
 ## Docker
 

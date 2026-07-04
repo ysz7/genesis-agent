@@ -88,6 +88,8 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             webhooks[name] = gw
     webhook_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0)) if webhooks else None
     webhook_secret = os.getenv("WEBHOOK_SECRET") or None
+    for gw in webhooks.values():
+        gw.on_mounted(webhook_client, loop)   # e.g. bind approval-buttons bridge
     if webhooks:
         problem = store_guard(deps.store)
         if problem:
@@ -113,6 +115,10 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                         log.info("scheduled delivery [%s]: %s",
                                  rec.get("job_id"), str(rec.get("text"))[:200])
                         scheduler.mark_delivered(deps.store, rec["id"], "server")
+                    # Webhook-only channels (WhatsApp) have no loop of their own —
+                    # deliver their scheduled results from here (Phase 25a).
+                    for gw in webhooks.values():
+                        await gw.deliver_pending(webhook_client)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:  # noqa: BLE001 - keep the loop alive
@@ -295,11 +301,11 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             if gw is None:
                 self._send(404, {"error": f"no gateway mounted at /webhook/{name}"})
                 return
-            if webhook_secret:
-                got = self.headers.get("x-telegram-bot-api-secret-token", "")
-                if not (len(got) == len(webhook_secret) and hmac.compare_digest(got, webhook_secret)):
-                    self._send(401, {"error": "bad webhook secret"})
-                    return
+            # Channel-specific auth: Telegram checks the secret-token header,
+            # WhatsApp verifies Meta's X-Hub-Signature-256 over the raw body.
+            if not gw.webhook_authorized(self.headers, raw, webhook_secret):
+                self._send(401, {"error": "webhook authentication failed"})
+                return
             try:
                 update = json.loads(raw or b"{}")
             except json.JSONDecodeError:
