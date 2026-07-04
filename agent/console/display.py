@@ -33,7 +33,7 @@ from ..runtime.attachments import prompt_text
 from ..engine.registry import tool_names
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 
-EMERALD = "#10b981"
+EMERALD = "#15c17c"
 console = Console()
 
 # The live spinner currently running (if any), so a confirm prompt can pause it.
@@ -113,8 +113,8 @@ def print_banner(config: Config, tools: list) -> None:
     )
     console.print(grid)
     console.print(
-        f"  [dim]Type a task, or [/][bold]/help[/][dim] · "
-        f"[/][bold]/quit[/][dim] to exit[/]\n"
+        f"  [dim]Type a task, or [/][bold {EMERALD}]/help[/][dim] · "
+        f"[/][bold {EMERALD}]/quit[/][dim] to exit[/]\n"
     )
 
 

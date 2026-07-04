@@ -20,7 +20,7 @@ from rich.panel import Panel
 
 from . import display
 
-EMERALD = "#10b981"
+EMERALD = "#15c17c"
 console = Console()
 PROVIDERS = ["openai", "anthropic", "openrouter", "ollama"]
 _DEFAULT_MODELS = {

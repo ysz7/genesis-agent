@@ -4,7 +4,7 @@
       font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", Menlo, monospace;
       font-size: 20px;
       font-weight: bold;
-      fill: #10b981;
+      fill: #15c17c;
       white-space: pre;
     }
   </style>

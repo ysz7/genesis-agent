@@ -7,11 +7,8 @@
 *A lightweight, finished base for AI agents — Copy · Configure · Run → your specialized agent is ready.*
 
 ![CI](https://github.com/ysz7/genesis-agent/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.10+-064e3b?logo=python&logoColor=white)
-![Pydantic AI](https://img.shields.io/badge/built%20on-Pydantic%20AI-047857)
-![uv](https://img.shields.io/badge/packaged%20with-uv-059669)
-![Providers](https://img.shields.io/badge/providers-OpenAI%20·%20Anthropic%20·%20OpenRouter%20·%20Ollama-10b981)
-![License](https://img.shields.io/badge/license-MIT-34d399)
+![Release](https://img.shields.io/github/v/tag/ysz7/genesis-agent?label=release&color=15c17c)
+![License](https://img.shields.io/badge/license-MIT-0ea063)
 
 </div>
 
@@ -32,9 +29,9 @@ delegation, a sandbox-and-approval safety layer, a live console, and
 headless / Docker / cron deployment. You write only what makes your agent *yours*.
 
 And unlike heavyweight frameworks, there's no magic to fight and little to carry:
-the whole engine is ~3.8k lines of readable Python on Pydantic AI — light on
-resources, small enough to read in an evening, simple enough to trust in
-production.
+the whole engine is ~8k lines of readable Python on Pydantic AI (Python 3.10+,
+packaged with `uv`, six core dependencies) — light on resources, small enough to
+read in a sitting, simple enough to trust in production.
 
 **It runs in any environment from day one** — interactive terminal, headless
 HTTP service, Docker container, or on a schedule via cron / Task Scheduler — and
