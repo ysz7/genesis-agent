@@ -110,20 +110,16 @@
     border: 1px solid var(--border); border-radius: 999px;
     padding: 6px 14px; background: var(--panel);
   }
-  .eyebrow .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 0 0 var(--glow); animation: pulse 2.4s infinite; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.5); } 70% { box-shadow: 0 0 0 9px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+  .eyebrow .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
   h1 {
     margin-top: 30px;
-    font-size: clamp(38px, 6.4vw, 70px);
-    line-height: 1.04;
-    font-weight: 800;
-    letter-spacing: -0.035em;
+    font-family: var(--mono);
+    font-size: clamp(32px, 5.4vw, 58px);
+    line-height: 1.12;
+    font-weight: 700;
+    letter-spacing: -0.04em;
   }
-  h1 .grad {
-    background: linear-gradient(180deg, #eafff5 0%, var(--accent-2) 55%, var(--accent-deep) 100%);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
+  h1 .grad { color: var(--text); }
   .sub {
     margin: 26px auto 0;
     max-width: 660px;
@@ -139,9 +135,9 @@
     transition: transform .15s ease, box-shadow .25s ease, background .2s ease, border-color .2s ease;
   }
   .btn:active { transform: translateY(1px); }
-  .btn-primary { color: #ffffff; background: linear-gradient(180deg, var(--accent-2), var(--accent));
-    box-shadow: 0 8px 30px var(--glow); }
-  .btn-primary:hover { box-shadow: 0 10px 40px rgba(16,185,129,.4); }
+  .btn-primary { color: #04150f; background: var(--accent); font-weight: 700;
+    box-shadow: 0 4px 18px rgba(16,185,129,.22); }
+  .btn-primary:hover { background: var(--accent-2); box-shadow: 0 6px 22px rgba(16,185,129,.3); }
   .btn-ghost { color: var(--text); border: 1px solid var(--border-2); background: var(--panel); }
   .btn-ghost:hover { border-color: var(--accent-deep); background: var(--panel-2); }
   .arrow { transition: transform .2s ease; }
@@ -158,10 +154,12 @@
   /* ── Sections ─────────────────────────────────────── */
   section { padding: 84px 0; position: relative; }
   .eyebrow-h {
-    font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-family: var(--mono);
+    font-size: 12.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
     color: var(--accent);
   }
-  .h2 { margin-top: 14px; font-size: clamp(26px, 3.6vw, 38px); font-weight: 700; letter-spacing: -.03em; line-height: 1.12; }
+  .h2 { margin-top: 14px; font-family: var(--mono); font-size: clamp(23px, 3.2vw, 33px);
+    font-weight: 700; letter-spacing: -.035em; line-height: 1.2; }
   .section-sub { margin-top: 16px; max-width: 660px; color: var(--dim); font-size: 17px; }
 
   /* reveal on scroll */
@@ -179,7 +177,8 @@
   }
   .card:hover { border-color: var(--border-2); background: var(--panel-2); }
   .card.lit { border-color: rgba(16,185,129,.35); background: linear-gradient(180deg, rgba(16,185,129,.05), transparent); }
-  .card .kicker { font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
+  .card .kicker { font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+    color: var(--dim); letter-spacing: .04em; text-transform: uppercase; }
   .card h3 { margin-top: 6px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
   .card .desc { margin-top: 6px; color: var(--dim); font-size: 14.5px; }
   .list { list-style: none; margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
