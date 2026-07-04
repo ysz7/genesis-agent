@@ -27,6 +27,45 @@ def _model() -> FunctionModel:
     return FunctionModel(fn)
 
 
+def test_deliveries_endpoint(monkeypatch, tmp_path):
+    import httpx
+
+    (tmp_path / "settings.yaml").write_text("store: agent.sqlite\n", encoding="utf-8")
+    monkeypatch.setattr(factory, "build_model", lambda config: _model())
+    monkeypatch.setenv("SERVER_TOKEN", "sekret")
+    config = load_config(tmp_path)
+
+    store = open_store(config.workspace / "agent.sqlite")
+    job = scheduler.add_job(store, "ping", 3600)
+    scheduler.enqueue_delivery(store, job, "the result")
+    store.close()
+
+    httpd, deps = start_background(config, port=(port := _free_port()))
+    base = f"http://127.0.0.1:{port}"
+    try:
+        assert httpx.get(f"{base}/deliveries", timeout=10).status_code == 401  # auth on
+        headers = {"Authorization": "Bearer sekret"}
+        got = httpx.get(f"{base}/deliveries", headers=headers, timeout=10).json()
+        assert len(got["deliveries"]) == 1
+        assert got["deliveries"][0]["text"] == "the result"
+        assert got["deliveries"][0]["job_id"] == job["id"]
+        # consumed: a second poll returns nothing
+        again = httpx.get(f"{base}/deliveries", headers=headers, timeout=10).json()
+        assert again["deliveries"] == []
+    finally:
+        stop_background(httpd, deps)
+
+
+def test_monitor_heartbeat():
+    from agent.console.display import GatewayMonitor
+
+    m = GatewayMonitor("telegram")
+    assert m.maybe_heartbeat(interval=9999) is False       # too soon after start
+    m._last_line = 0                                        # long silence
+    assert m.maybe_heartbeat(interval=300) is True          # prints the idle line
+    assert m.maybe_heartbeat(interval=300) is False         # …once, not every tick
+
+
 def test_server_runs_due_job(monkeypatch, tmp_path):
     (tmp_path / "settings.yaml").write_text(
         "store: agent.sqlite\nscheduler:\n  enabled: true\n  tick: 1\n", encoding="utf-8"

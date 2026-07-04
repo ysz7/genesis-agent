@@ -137,6 +137,22 @@ def test_delivery_scoped_to_one_channel(tmp_path):
     store.close()
 
 
+def test_delivery_independent_consumers(tmp_path):
+    """Two consumers of one target (server-log drain vs /deliveries) don't race."""
+    store = _store(tmp_path)
+    job = scheduler.add_job(store, "ping", 60)
+    rec = scheduler.enqueue_delivery(store, job, "x")
+    # log drain consumes under its own key…
+    assert len(scheduler.pending_for(store, "server", consumer="server-log")) == 1
+    scheduler.mark_delivered(store, rec["id"], "server-log")
+    assert scheduler.pending_for(store, "server", consumer="server-log") == []
+    # …while the endpoint's key still sees the record once
+    assert len(scheduler.pending_for(store, "server")) == 1
+    scheduler.mark_delivered(store, rec["id"], "server")
+    assert scheduler.pending_for(store, "server") == []
+    store.close()
+
+
 def test_delivery_ages_out(tmp_path):
     store = _store(tmp_path)
     job = scheduler.add_job(store, "ping", 60)

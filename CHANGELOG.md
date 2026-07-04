@@ -23,6 +23,11 @@ syncing, since some releases change defaults.
   under `agent --serve` (the Gateways menu marks it webhook-only).
 - Telegram approval buttons now also work in **webhook mode** (previously
   long-poll only) — gateways get an `on_mounted` hook when mounted on the server.
+- **`GET /deliveries`** on the HTTP server — pending scheduled-task results as
+  JSON for external pollers (bearer-authenticated; each record returned once,
+  independently of the server's log drain).
+- **Gateway monitor heartbeat** — a quiet bot window now prints an
+  `idle · polling · N msg(s)` line every few minutes instead of looking frozen.
 
 ### Changed
 - Shared gateway logic (owner/commands/denied-text, delivery fan-out, the

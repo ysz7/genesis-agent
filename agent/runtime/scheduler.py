@@ -220,16 +220,23 @@ def enqueue_delivery(store: Any, job: dict, text: str, now: float | None = None)
     return rec
 
 
-def pending_for(store: Any, channel: str, now: float | None = None) -> list[dict]:
-    """Delivery records *channel* should send (target all/itself, not yet consumed)."""
+def pending_for(store: Any, channel: str, now: float | None = None, *, consumer: str | None = None) -> list[dict]:
+    """Delivery records *channel* should send (target all/itself, not yet consumed).
+
+    *consumer* is the consumption key checked against ``consumed`` (defaults to
+    *channel*). Two independent consumers of the same target — e.g. the server's
+    log drain (``server-log``) and the ``GET /deliveries`` endpoint (``server``)
+    — each see a record once without racing each other.
+    """
     now = time.time() if now is None else now
+    consumer = consumer or channel
     out = []
     for rec in store.get(DELIVERIES_KEY, []) or []:
         if (now - float(rec.get("ts", 0))) > _DELIVERY_TTL:
             continue
         if rec.get("deliver", "all") not in ("all", channel):
             continue
-        if channel in rec.get("consumed", []):
+        if consumer in rec.get("consumed", []):
             continue
         out.append(rec)
     return out

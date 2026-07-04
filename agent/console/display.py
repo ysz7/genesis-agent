@@ -684,6 +684,7 @@ class GatewayMonitor:
         self.total_time = 0.0
         self.users: set = set()
         self._lock = threading.Lock()
+        self._last_line = time.time()   # last feed/heartbeat output (Phase 26b)
 
     def on_start(self) -> None:
         console.print(LOGO.format(c=EMERALD))
@@ -705,11 +706,30 @@ class GatewayMonitor:
         with self._lock:
             self.messages += 1
             self.users.add(str(user_id))
+            self._last_line = time.time()
         ts = time.strftime("%H:%M:%S")
         console.print(
             f"  [dim]{ts}[/] [{EMERALD}]→[/] [dim]{_esc(self._who(user_id, user_name))}:[/] "
             f"{_esc(_trunc(text or '(media)', 56))}"
         )
+
+    def maybe_heartbeat(self, interval: float = 300.0) -> bool:
+        """Print an idle line when nothing has been shown for *interval* seconds.
+
+        Keeps the live window from looking frozen during quiet stretches. Returns
+        True when a line was printed (used by tests).
+        """
+        now = time.time()
+        with self._lock:
+            if now - self._last_line < interval:
+                return False
+            self._last_line = now
+            msgs, users = self.messages, len(self.users)
+        ts = time.strftime("%H:%M:%S")
+        console.print(
+            f"  [dim]{ts} · idle · polling · {msgs} msg(s) · {users} user(s)[/]"
+        )
+        return True
 
     def on_reply(self, ok: bool, tokens: int, elapsed: float, preview: str = "") -> None:
         with self._lock:

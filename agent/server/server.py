@@ -6,6 +6,8 @@
     POST /task              {"task": "..."}            → {"output": ...}
     GET  /task?q=...        browser-friendly           → {"output": ...}
     GET  /task/stream?q=... text/event-stream          → incremental SSE frames
+    GET  /deliveries        pending scheduled results  → {"deliveries": [...]}
+    POST /webhook/<gw>      messaging-gateway inbound  → {"ok": true}
     GET  /health            open (no auth)             → {"status": "ok"}
 
 The Agent, model, tools, and deps are identical to the CLI path — only the
@@ -111,10 +113,12 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                         owner_id=owner, ttl=max(60.0, tick * 2),
                         usage_limits=config.usage_limits,
                     )
-                    for rec in scheduler.pending_for(deps.store, "server"):
+                    # Log drain uses its own consumption key so GET /deliveries
+                    # (which consumes "server") still sees each record once.
+                    for rec in scheduler.pending_for(deps.store, "server", consumer="server-log"):
                         log.info("scheduled delivery [%s]: %s",
                                  rec.get("job_id"), str(rec.get("text"))[:200])
-                        scheduler.mark_delivered(deps.store, rec["id"], "server")
+                        scheduler.mark_delivered(deps.store, rec["id"], "server-log")
                     # Webhook-only channels (WhatsApp) have no loop of their own —
                     # deliver their scheduled results from here (Phase 25a).
                     for gw in webhooks.values():
@@ -209,8 +213,30 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 task = self._query_task(parsed)
                 if task:
                     self._handle_stream(task)
+            elif parsed.path == "/deliveries":
+                if not self._authorized():
+                    return
+                self._handle_deliveries()
             else:
                 self._send(404, {"error": "not found"})
+
+        def _handle_deliveries(self) -> None:
+            """Return pending scheduled-task results for external pollers (Phase 26a).
+
+            Each record is returned once (consumed under the ``server`` key —
+            independent of the ticker's log drain, which uses ``server-log``).
+            """
+            from ..runtime import scheduler as _sched
+
+            records = _sched.pending_for(deps.store, "server")
+            out = [
+                {"id": r.get("id"), "job_id": r.get("job_id"),
+                 "text": r.get("text"), "ts": r.get("ts")}
+                for r in records
+            ]
+            for r in records:
+                _sched.mark_delivered(deps.store, r["id"], "server")
+            self._send(200, {"deliveries": out})
 
         def _query_task(self, parsed) -> str | None:
             params = parse_qs(parsed.query)

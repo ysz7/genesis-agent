@@ -282,6 +282,12 @@ class TelegramGateway(Gateway):
                     logger.exception("error handling update: %s", exc)
             # Scheduler tick: run due jobs (if we own the lock) + deliver results.
             await self._tick_scheduler(client)
+            # Keep a quiet monitor window visibly alive (Phase 26b).
+            if self.monitor is not None:
+                try:
+                    self.monitor.maybe_heartbeat()
+                except Exception:  # noqa: BLE001 - cosmetics must never kill the loop
+                    pass
 
     async def _get_updates(self, client: httpx.AsyncClient, offset: int | None) -> list[dict]:
         params: dict[str, Any] = {"timeout": POLL_TIMEOUT}

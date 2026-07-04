@@ -214,7 +214,9 @@ curl -N "localhost:8181/task/stream?q=list+the+files+here"
 ```
 
 Endpoints: `POST /task` · `GET /task?q=...` (browser-friendly) ·
-`GET /task/stream?q=...` (SSE) · `GET /health` (open, no auth).
+`GET /task/stream?q=...` (SSE) · `GET /deliveries` (pending scheduled-task
+results as JSON, each returned once — for external pollers) ·
+`POST /webhook/<gateway>` (messaging inbound) · `GET /health` (open, no auth).
 
 Each request is **stateless by default**. With `threads.enabled`, a caller can
 pass `POST {"task": ..., "session": "<id>"}` to carry a conversation across
@@ -574,7 +576,8 @@ a normal chat (CLI or a gateway): `schedule_task("summarize HN", "2h")`,
 in the store and fire **in the background** while a long-lived process is up — a
 **gateway bot** or the **HTTP server** (`--serve`). Each result is delivered to
 **all channels** (every Telegram/WhatsApp allowlisted user, the CLI feed if open,
-the server log). One process runs each due job — a shared owner-lock prevents
+the server log — plus `GET /deliveries` for external pollers). One process runs
+each due job — a shared owner-lock prevents
 double-firing when a bot *and* the server are both up. On by default; configure
 under `scheduler:` in `settings.yaml` (`enabled`, `tick`, `max_jobs`). The
 interactive REPL is **not** a runner — it only surfaces delivered results between
