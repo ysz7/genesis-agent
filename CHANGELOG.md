@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.3.1] — 2026-07-04
 
 ### Added
 - **WhatsApp parity with Telegram** — the WhatsApp gateway grew from a text-only
