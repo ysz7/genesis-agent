@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.3.2] — 2026-07-05
 
 ### Security
 - **Secret redaction (ON by default)** — `.env` secret values (API keys,
