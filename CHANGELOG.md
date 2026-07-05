@@ -8,6 +8,25 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Security
+- **Secret redaction (ON by default)** — `.env` secret values (API keys,
+  tokens) are now scrubbed from every tool's output and the final answer,
+  replaced with `[secret:NAME]`. Closes a gap where `run_shell` (not
+  filesystem-sandboxed) could leak credentials via `cat .env` — typed by a
+  user or induced by prompt injection in fetched web content — into the model
+  context, chat log, or provider transcripts. New `agent/runtime/secrets.py`;
+  opt out with `redact_secrets: false` in `settings.yaml`.
+- **`run_shell` is confirm-gated by default** — the template `settings.yaml`
+  now ships `tools: {confirm: [run_shell]}` uncommented. Untrusted input
+  (fetched URLs, web search results) is attacker-controlled; an unconfirmed
+  shell tool turned that into an injection-to-RCE chain. Existing agents
+  copied before this change are unaffected until they update their
+  `settings.yaml` from the template; new agents (via the wizard) inherit the
+  safer default automatically. Trusted local setups can restore the old
+  behavior with `tools: {confirm: []}`.
+
 ## [1.3.1] — 2026-07-04
 
 ### Added

@@ -124,15 +124,23 @@ retries: 2
 # sandbox: true
 
 # Tool policy. disable: tools never registered (the model can't see them).
-# confirm: tools that need a human y/N before each call (in the CLI; headless
-# --serve has no human, so a confirm-listed tool refuses to run).
-# Why it matters: fetch_url content is attacker-controlled (prompt injection),
-# so an unconfirmed run_shell is an injection-to-RCE chain.
-#   untrusted inputs / web content : confirm or disable run_shell
-#   fully trusted local use        : leave unset
-# tools:
-#   disable: []
-#   confirm: [run_shell]
+# confirm: tools that need a human approval (once / always / deny) before each
+# call. Why the default below matters: fetch_url / web_search content is
+# attacker-controlled (prompt injection), so an unconfirmed run_shell is an
+# injection-to-RCE chain — shell commands are confirmed by DEFAULT. Answer
+# "always" once to stop being asked. Headless --serve has no human: either
+# grant "always" first and set approvals.headless_allow_granted, or (trusted
+# setups only) remove run_shell from this list.
+#   untrusted inputs / web content : keep the default (or disable run_shell)
+#   fully trusted local use        : tools: {confirm: []}
+tools:
+  confirm: [run_shell]
+
+# Secret redaction (ON by default). Values from .env (API keys, tokens) are
+# replaced with [secret:NAME] in every tool output and in the final answer, so
+# `cat .env` — typed or prompt-injected — can't leak credentials to the model,
+# logs, or chat. Set false only for trusted setups that need raw values.
+# redact_secrets: true
 
 # Guardrails (optional). A content layer ON TOP of the tool policy: regex checks
 # on the run's text input and the model's output. OFF by default (zero overhead).

@@ -171,4 +171,16 @@ def build_agent(
     if validator is not None:
         agent.output_validator(validator)
 
+    # Secret redaction (Phase 27a): scrub .env values from the final answer —
+    # the belt to the registry wrapper's braces (covers a model echoing a secret
+    # it saw before redaction was enabled, or one pasted into the task itself).
+    from ..runtime import secrets as _secrets
+
+    if _secrets.enabled(config.settings):
+        secret_values = _secrets.collect_secrets(config.root)
+        if secret_values:
+            @agent.output_validator
+            def _redact_answer(value):
+                return _secrets.redact_value(value, secret_values)
+
     return agent

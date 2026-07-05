@@ -44,6 +44,9 @@ class AgentDeps:
     approval_hook: Callable[[str, str], str] | None = None
     # Verticals add their own clients here (e.g. ``broker: BrokerClient``)
     extra: dict[str, Any] = field(default_factory=dict)
+    # ``.env`` secret values (Phase 27a): tool outputs and the final answer are
+    # scrubbed of these. Empty when ``redact_secrets: false``.
+    secrets: dict[str, str] = field(default_factory=dict)
 
     # ── Workspace layout (Phase 11a) ──────────────────────────────────────────
     # Everything the agent authors lives under workspace/ in a fixed structure:
@@ -91,6 +94,8 @@ def build_deps(config: Config) -> AgentDeps:
     Opens the state store (``workspace/state.<ext>``, JSON by default) and a
     shared HTTP client. Call :func:`close_deps` when done to release them.
     """
+    from . import secrets as secrets_mod
+
     store_name = str(config.settings.get("store", "state.json"))
     store = open_store(config.workspace / store_name)
     http = httpx.Client(
@@ -104,6 +109,11 @@ def build_deps(config: Config) -> AgentDeps:
         store=store,
         http=http,
         workspace=config.workspace,
+        secrets=(
+            secrets_mod.collect_secrets(config.root)
+            if secrets_mod.enabled(config.settings)
+            else {}
+        ),
     )
 
 

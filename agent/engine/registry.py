@@ -168,7 +168,63 @@ def discover_tools(config: Config, exclude: set[str] | None = None) -> list[Call
             _wrap_confirm(t) if getattr(t, "__name__", "") in confirm else t
             for t in tools
         ]
+
+    # Secret redaction (Phase 27a): scrub .env values from every tool's output
+    # before the model sees it. Outermost wrapper, so confirm refusals and
+    # generated-tool errors pass through it too. ON unless redact_secrets: false.
+    from ..runtime import secrets as secrets_mod
+
+    if secrets_mod.enabled(config.settings):
+        tools = [_wrap_redact(t) for t in tools]
     return tools
+
+
+def _wrap_redact(tool: Callable) -> Callable:
+    """Scrub ``deps.secrets`` values from *tool*'s return value.
+
+    Same signature-preserving technique as :func:`_wrap_confirm`: the wrapper
+    always has a ``RunContext`` first parameter (the tool's own, or an injected
+    one) so it can reach ``deps.secrets``, and ``__signature__`` keeps the
+    model-facing schema derived from the original signature.
+    """
+    from ..runtime.secrets import redact_value
+
+    sig = inspect.signature(tool)
+    params = list(sig.parameters.values())
+    has_ctx = bool(params) and "RunContext" in str(params[0].annotation)
+
+    def _scrub(ctx, out):
+        deps = getattr(ctx, "deps", None)
+        secrets = getattr(deps, "secrets", None) or {}
+        return redact_value(out, secrets) if secrets else out
+
+    if inspect.iscoroutinefunction(tool):
+        @functools.wraps(tool)
+        async def wrapper(*args, **kwargs):
+            ctx = args[0] if args else None
+            call_args = args if has_ctx else args[1:]
+            return _scrub(ctx, await tool(*call_args, **kwargs))
+    else:
+        @functools.wraps(tool)
+        def wrapper(*args, **kwargs):
+            ctx = args[0] if args else None
+            call_args = args if has_ctx else args[1:]
+            return _scrub(ctx, tool(*call_args, **kwargs))
+
+    if has_ctx:
+        wrapper.__signature__ = sig  # type: ignore[attr-defined]
+    else:
+        ctx_param = inspect.Parameter(
+            "_ctx", inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=RunContext[AgentDeps],
+        )
+        wrapper.__signature__ = sig.replace(parameters=[ctx_param, *params])  # type: ignore[attr-defined]
+        # get_type_hints() (used by Pydantic AI's schema builder) reads
+        # __annotations__ directly rather than the signature — functools.wraps
+        # copied the ORIGINAL tool's annotations, which have no "_ctx" entry,
+        # so add it or schema generation KeyErrors on this synthetic parameter.
+        wrapper.__annotations__ = {"_ctx": RunContext[AgentDeps], **getattr(tool, "__annotations__", {})}
+    return wrapper
 
 
 def _wrap_confirm(tool: Callable) -> Callable:
@@ -210,6 +266,11 @@ def _wrap_confirm(tool: Callable) -> Callable:
             annotation=RunContext[AgentDeps],
         )
         wrapper.__signature__ = sig.replace(parameters=[ctx_param, *params])  # type: ignore[attr-defined]
+        # get_type_hints() (used by Pydantic AI's schema builder) reads
+        # __annotations__ directly rather than the signature — functools.wraps
+        # copied the ORIGINAL tool's annotations, which have no "_ctx" entry,
+        # so add it or schema generation KeyErrors on this synthetic parameter.
+        wrapper.__annotations__ = {"_ctx": RunContext[AgentDeps], **getattr(tool, "__annotations__", {})}
     return wrapper
 
 

@@ -85,9 +85,12 @@ cd genesis-agent
   memory; **structured output** — return a typed Pydantic model instead of prose.
 - **Conversation memory** — the REPL threads history across turns and
   auto-compacts it into a summary when a session outgrows the context budget.
-- **Safe by default** — built-in file tools are workspace-sandboxed; a tool
-  policy can disable or human-confirm risky tools; the HTTP server binds
-  localhost and accepts an optional bearer token.
+- **Safe by default** — built-in file tools are workspace-sandboxed;
+  `run_shell` requires human confirmation out of the box (fetched web content
+  is attacker-controlled, so an unconfirmed shell tool is an injection-to-RCE
+  chain); `.env` secret values are redacted from every tool's output and the
+  final answer; the HTTP server binds localhost and accepts an optional
+  bearer token.
 - **Bounded & tunable** — per-run usage limits (request/token caps) and model
   settings (temperature, `max_tokens`, …) straight from `settings.yaml`.
 - **Built for multi-step work** — a live `update_plan` checklist and `delegate`
@@ -140,7 +143,8 @@ enable). Every `settings.yaml` key:
 | `model_settings` | `temperature` / `max_tokens` / `timeout` | ⬜ off (provider defaults) |
 | `model_fallbacks` | backup models retried on a transient failure | ⬜ off |
 | `sandbox` | confine file tools to `workspace/` | ✅ on (code default `true`) |
-| `tools` | `disable` / `confirm` tool policy | ⬜ off (no policy) |
+| `tools` | `disable` / `confirm` tool policy | ✅ on (`confirm: [run_shell]` in the template) |
+| `redact_secrets` | scrub `.env` values from tool output + the final answer | ✅ on (code default `true`) |
 | `guardrails` | regex `input` / `output` `block` / `redact` | ⬜ off |
 | `serve_timeout` | per-task wall-clock for `--serve` (→ 504) | ✅ on (`300`) |
 | `prompt_caching` | reuse the provider's prompt cache | ⬜ off |
@@ -280,7 +284,8 @@ files with the same notes — this is just the consolidated reference.
 | `model_settings` | — | `temperature`, `max_tokens`, `timeout`, … passed to the model |
 | `model_fallbacks` | — | backup model ids (same provider) retried on a transient primary failure |
 | `sandbox` | `true` | confine file tools to `workspace/`; `false` to allow any path |
-| `tools` | — | `disable: [...]` (never registered) · `confirm: [...]` (human y/N) |
+| `tools` | `confirm: [run_shell]` | `disable: [...]` (never registered) · `confirm: [...]` (human once/always/deny) — shell is confirmed by default, since fetched web content is attacker-controlled and an unconfirmed shell tool is an injection-to-RCE chain |
+| `redact_secrets` | `true` | scrub `.env` secret VALUES from every tool's output and the final answer (`[secret:NAME]`); `false` for trusted setups that need raw values |
 | `guardrails` | — | regex `input`/`output` `block`/`redact` — a content layer over the tool policy |
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
