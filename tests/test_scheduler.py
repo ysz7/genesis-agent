@@ -179,13 +179,17 @@ def _force_due(store, job_id):
     store.set(scheduler.KEY, jobs)
 
 
+def _fake_deps(tmp_path):
+    return SimpleNamespace(settings={}, workspace=tmp_path, secrets={})
+
+
 def test_run_due_jobs_fires_bumps_enqueues(tmp_path):
     store = _store(tmp_path)
     job = scheduler.add_job(store, "ping", 60)
     _force_due(store, job["id"])
     agent = _FakeAgent()
     fired = asyncio.run(
-        scheduler.run_due_jobs(store, agent, SimpleNamespace(), owner_id="me", ttl=60)
+        scheduler.run_due_jobs(store, agent, _fake_deps(tmp_path), owner_id="me", ttl=60)
     )
     assert agent.ran == ["ping"]
     assert len(fired) == 1 and fired[0][1] == "did:ping" and fired[0][2] is True
@@ -202,7 +206,7 @@ def test_run_due_jobs_noop_when_not_owner(tmp_path):
     scheduler.claim_ownership(store, "other", ttl=600)             # someone else owns
     agent = _FakeAgent()
     fired = asyncio.run(
-        scheduler.run_due_jobs(store, agent, SimpleNamespace(), owner_id="me", ttl=600)
+        scheduler.run_due_jobs(store, agent, _fake_deps(tmp_path), owner_id="me", ttl=600)
     )
     assert fired == [] and agent.ran == []
     store.close()

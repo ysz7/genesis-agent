@@ -729,6 +729,7 @@ def _run_job(agent, deps, job: dict) -> None:
     import asyncio
 
     from ..runtime.runlog import append_run
+    from ..runtime.transcripts import write_transcript
 
     task = job["task"]
     console.print(f"  [dim]{time.strftime('%H:%M:%S')}[/] [{EMERALD}]→[/] {_clip(task, 60)}")
@@ -748,9 +749,12 @@ def _run_job(agent, deps, job: dict) -> None:
         usage = u if hasattr(u, "input_tokens") else u()
         tokens = (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
         append_run(deps, task, elapsed, tokens, ok=True)
+        write_transcript(deps, task, result=result, duration=elapsed, ok=True)
     except Exception as exc:  # noqa: BLE001 - one bad run shouldn't stop the loop
+        elapsed = time.monotonic() - start
         console.print(f"           [red]←[/] [dim]error: {_clip(str(exc), 60)}[/]")
-        append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
+        append_run(deps, task, elapsed, 0, ok=False, error=str(exc))
+        write_transcript(deps, task, duration=elapsed, ok=False, error=str(exc))
 
 
 # ── First-run setup ───────────────────────────────────────────────────────────

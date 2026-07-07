@@ -49,6 +49,7 @@ from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
 from ..runtime import threads
 from ..runtime.runlog import append_run
+from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
 from ..engine import guardrails
@@ -386,6 +387,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 if monitor:
                     monitor.on_result(False, 0, elapsed)
                 append_run(deps, task_text, elapsed, 0, ok=False, error="timeout")
+                write_transcript(deps, task_text, duration=elapsed, ok=False, error="timeout")
                 self._send(504, {"error": f"task exceeded {serve_timeout:.0f}s timeout"})
                 return
             except Exception as exc:  # noqa: BLE001 - the task itself failed
@@ -393,12 +395,14 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 if monitor:
                     monitor.on_result(False, 0, elapsed)
                 append_run(deps, task_text, elapsed, 0, ok=False, error=str(exc))
+                write_transcript(deps, task_text, duration=elapsed, ok=False, error=str(exc))
                 self._send(500, {"error": f"{exc}{vision_hint(exc)}"})
                 return
             elapsed = time.monotonic() - start
             if monitor:
                 monitor.on_result(True, _tokens(result), elapsed)
             append_run(deps, task_text, elapsed, _tokens(result), ok=True)
+            write_transcript(deps, task_text, result=result, duration=elapsed, ok=True)
             if use_thread:                   # persist the updated conversation
                 keep = int(config.settings.get("history_keep", 40))
                 threads.save_thread(deps.store, session, result.all_messages(), keep=keep)
@@ -466,6 +470,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 if monitor:
                     monitor.on_result(ok, tokens, elapsed)
                 append_run(deps, task, elapsed, tokens, ok=ok)
+                write_transcript(deps, task, result=result, duration=elapsed, ok=ok)
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd._agent = agent  # type: ignore[attr-defined]

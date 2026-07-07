@@ -29,6 +29,7 @@ from rich.text import Text
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from ..runtime.runlog import append_run
+from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import prompt_text
 from ..engine.registry import tool_names
 from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
@@ -179,7 +180,9 @@ async def run_streamed(
                 elif isinstance(ev, Done):
                     result = ev.result
     except Exception as exc:
-        append_run(deps, task_text, time.monotonic() - start, 0, ok=False, error=str(exc))
+        elapsed = time.monotonic() - start
+        append_run(deps, task_text, elapsed, 0, ok=False, error=str(exc))
+        write_transcript(deps, task_text, duration=elapsed, ok=False, error=str(exc))
         raise
     finally:
         status.stop()
@@ -195,6 +198,7 @@ async def run_streamed(
     inline_stats(usage, elapsed, model)
     total = (getattr(usage, "input_tokens", 0) or 0) + (getattr(usage, "output_tokens", 0) or 0)
     append_run(deps, task_text, elapsed, total, ok=True)
+    write_transcript(deps, task_text, result=result, duration=elapsed, ok=True)
     return result
 
 

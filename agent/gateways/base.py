@@ -23,6 +23,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -229,7 +230,8 @@ class Pipeline:
         """
         from ..engine import guardrails
         from ..runtime import threads
-        from ..runtime.attachments import build_user_prompt, max_mb_from
+        from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text
+        from ..runtime.transcripts import write_transcript
 
         allowed, text = guardrails.check_input(self.settings, inbound.text)
         if not allowed:
@@ -245,14 +247,28 @@ class Pipeline:
         else:
             prompt = text
 
-        result = await self.agent.run(
-            prompt, deps=self.deps,
-            message_history=history or None,
-            usage_limits=self.usage_limits,
-        )
-        self.last_tokens = _tokens(result)
-        threads.save_thread(self.deps.store, session, result.all_messages(), keep=self.keep)
-        return _as_text(result.output)
+        start = time.monotonic()
+        ok = True
+        error: str | None = None
+        result = None
+        try:
+            result = await self.agent.run(
+                prompt, deps=self.deps,
+                message_history=history or None,
+                usage_limits=self.usage_limits,
+            )
+            self.last_tokens = _tokens(result)
+            threads.save_thread(self.deps.store, session, result.all_messages(), keep=self.keep)
+            return _as_text(result.output)
+        except Exception as exc:  # noqa: BLE001 - the caller decides how to surface this
+            ok = False
+            error = str(exc)
+            raise
+        finally:
+            write_transcript(
+                self.deps, prompt_text(prompt), result=result,
+                duration=time.monotonic() - start, ok=ok, error=error,
+            )
 
 
 # ── approval bridge core (shared button-approvals, Phase 22h/25d) ─────────────

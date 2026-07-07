@@ -119,7 +119,7 @@ fallback, semantic memory, the server, multimodal, **messaging gateways
 | Extra | Adds | Install |
 |-------|------|---------|
 | `mcp` | external [MCP](#mcp-servers-optional) tool servers | `uv sync --extra mcp` |
-| `obs` | [Logfire](#observability-optional) tracing | `uv sync --extra obs` |
+| `obs` | [Logfire](#debugging-your-agent-optional) tracing | `uv sync --extra obs` |
 | `evals` | the [eval harness](#evaluating-your-vertical-optional) | `uv sync --extra evals` |
 | `pg` | the [Postgres + pgvector example](examples/pg_support/) | `uv sync --extra pg` |
 
@@ -289,6 +289,8 @@ files with the same notes — this is just the consolidated reference.
 | `guardrails` | — | regex `input`/`output` `block`/`redact` — a content layer over the tool policy |
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
+| `log_transcripts` | `false` | write the full per-run trace to `workspace/transcripts/<ts>-<id>.jsonl` |
+| `transcripts_keep` | `200` | oldest transcript files pruned past this count |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
 | `prompt_caching` | `false` | reuse the provider's prompt cache (Anthropic: tool defs) |
 | `planning` | `enabled: true` | `update_plan` todo checklist, shown each turn ([§](#planning--delegation)) |
@@ -362,17 +364,27 @@ mcp:
 Their tools appear to the agent like built-ins (prefixed with `name`). Demo:
 [`examples/mcp_demo/`](examples/mcp_demo/). Without an `mcp:` block nothing changes.
 
-## Observability (optional)
+## Debugging your agent (optional)
 
-Two independent, opt-in layers — the core never imports either, so default
-runs are unchanged:
+Three independent, opt-in layers — the core never imports any of them, so
+default runs are unchanged. Start at the top and go deeper only when you need to:
 
+- **Local run log:** `log_runs: true` appends one JSON line per run (task,
+  duration, tokens, ok/err) to `workspace/runs.jsonl` — greppable history,
+  zero external services. Good for "how many runs today, how many failed."
+- **Run transcripts:** when the aggregate isn't enough — "why did the agent
+  call that tool with those args yesterday" — `log_transcripts: true` writes
+  the full trace of each run to its own
+  `workspace/transcripts/<ts>-<id>.jsonl`: every message part (role, tool
+  name, args, truncated content), token usage, duration, and ok/error. Written
+  the same way regardless of caller, so the CLI, server, scheduler, and
+  gateways all produce identical records. `.env` secret values are redacted
+  the same as any tool output. Capped by `transcripts_keep` (default 200
+  files, oldest pruned).
 - **Logfire tracing:** `uv sync --extra obs`, then set `LOGFIRE_TOKEN` in
-  `.env`. Every model and tool call is traced. Absent the token it degrades
-  silently.
-- **Local run log:** `log_runs: true` in `settings.yaml` appends one JSON line
-  per run (task, duration, tokens, ok/err) to `workspace/runs.jsonl` — greppable
-  history, zero external services.
+  `.env`. Every model and tool call is traced with full spans/timing in a
+  hosted UI — the heavyweight option when local files aren't enough. Absent
+  the token it degrades silently.
 
 ## Evaluating your vertical (optional)
 
@@ -628,7 +640,9 @@ genesis-agent/
 │   ├── files/              task outputs (write_file default)
 │   ├── tools/ · skills/    agent-authored, approved tools + skills (opt-in)
 │   ├── agents/             named subagent definitions (markdown)
-│   └── memory/             reflection lessons
+│   ├── memory/             reflection lessons
+│   ├── runs.jsonl          per-run aggregates (opt-in, log_runs)
+│   └── transcripts/        full per-run traces (opt-in, log_transcripts)
 ├── examples/               filled-in verticals to copy from
 ├── evals/                  copyable pydantic-evals harness (opt-in)
 ├── scripts/                install · run · fleet · new-agent helpers

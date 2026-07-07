@@ -276,11 +276,16 @@ async def run_due_jobs(
     Each run is stateless (no per-user thread). ``on_fire(job, text, ok)`` is an
     optional callback for logging/monitoring.
     """
+    from .transcripts import write_transcript
+
     if not claim_ownership(store, owner_id, ttl):
         return []
     fired: list[tuple[dict, str, bool]] = []
     for job in due_jobs(store):
         ok = True
+        error: str | None = None
+        result = None
+        start = time.monotonic()
         try:
             result = await agent.run(job["task"], deps=deps, usage_limits=usage_limits)
             text = _result_text(result)
@@ -288,6 +293,11 @@ async def run_due_jobs(
             logger.warning("scheduled task %s failed: %s", job.get("id"), exc)
             text = f"Scheduled task '{job.get('task')}' failed: {exc}"
             ok = False
+            error = str(exc)
+        write_transcript(
+            deps, job["task"], result=result,
+            duration=time.monotonic() - start, ok=ok, error=error,
+        )
         bump(store, job["id"])
         if job.get("deliver") is not None:
             enqueue_delivery(store, job, text)

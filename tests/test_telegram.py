@@ -136,7 +136,7 @@ def _make_gw(tmp_path, monkeypatch, allowlist=None, owner_id=None):
         tg["owner_id"] = owner_id
     settings = {"gateways": {"telegram": tg}, "scheduler": {"enabled": True}}
     config = SimpleNamespace(root=tmp_path, settings=settings, usage_limits=None)
-    deps = SimpleNamespace(store=store, extra={})
+    deps = SimpleNamespace(store=store, extra={}, settings={})
     gw = TelegramGateway(config, deps)
     gw._pipeline = Pipeline("telegram", _FakeAgent(), deps, settings)
     return gw, store

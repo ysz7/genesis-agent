@@ -8,6 +8,23 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [1.3.3] — 2026-07-07
+
+### Added
+- **Run transcripts (opt-in)** — `log_transcripts: true` writes the full trace
+  of every run to its own `workspace/transcripts/<ts>-<id>.jsonl`: a header
+  (task, duration, tokens, ok/error) followed by one line per message part
+  (role, tool name, args, truncated content). `runs.jsonl` only ever kept
+  aggregates; this is for "why did the agent do X yesterday." Written from
+  `result.all_messages()` the same way at every call site, so the CLI, server
+  (`/task` and `/task/stream`), scheduler, and gateways (Telegram/WhatsApp)
+  all produce identical records — the scheduler and gateways previously wrote
+  no run record at all. Tool args/content are redacted the same as any tool
+  output (`redact_secrets`, Phase 27a) before they touch disk. Bounded by
+  `transcripts_keep` (default 200 files, oldest pruned). New
+  `agent/runtime/transcripts.py`; a write failure is logged and swallowed —
+  never breaks a run.
+
 ## [1.3.2] — 2026-07-05
 
 ### Security

@@ -51,7 +51,7 @@ class _FakeAgent:
 
 
 def _deps(store):
-    return SimpleNamespace(store=store)
+    return SimpleNamespace(store=store, settings={})
 
 
 # ── settings helpers ──────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ def _make_gw(tmp_path, monkeypatch, allowlist=None):
     store = open_store(tmp_path / "agent.sqlite")
     settings = {"gateways": {"whatsapp": {"allowlist": allowlist or []}}}
     config = SimpleNamespace(root=tmp_path, settings=settings, usage_limits=None)
-    deps = SimpleNamespace(store=store, extra={})
+    deps = SimpleNamespace(store=store, extra={}, settings={})
     gw = WhatsAppGateway(config, deps)
     gw._pipeline = Pipeline("whatsapp", _FakeAgent(), deps, settings)
     return gw, store
