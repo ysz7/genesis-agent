@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [1.3.3] — 2026-07-07
+## [1.3.4] — 2026-07-07
 
 ### Added
 - **Run transcripts (opt-in)** — `log_transcripts: true` writes the full trace
