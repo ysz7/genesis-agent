@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.3.5] — 2026-07-08
 
 ### Changed
 - **Model defaults refreshed & centralized** — the per-provider default model
