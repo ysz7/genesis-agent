@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>genesis-agent — Ship a specialized agent.</title>
+<title>Genesis Agent — Ship a specialized agent.</title>
 <meta name="description" content="A lightweight, finished base for AI agents on Pydantic AI. The generic core — memory, planning, delegation, tools, safety, deployment — is already built and kept current with the frontier. Copy, configure, run; you write only what makes your agent yours.">
-<meta property="og:title" content="genesis-agent — ship a specialized agent">
+<meta property="og:title" content="Genesis Agent — ship a specialized agent">
 <meta property="og:description" content="A lightweight, finished base for AI agents — the generic core is already built and kept current with the frontier. Copy, configure, run; you write only what's yours.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://ysz7.github.io/genesis-agent/assets/og.png">
@@ -83,11 +83,9 @@
   nav.scrolled { border-bottom-color: var(--border); }
   .nav-in { max-width: var(--maxw); margin: 0 auto; padding: 14px 24px;
     display: flex; align-items: center; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand .mark { width: 28px; height: 28px; display: block;
+  .brand { display: flex; align-items: center; }
+  .brand .brand-logo { height: 24px; width: auto; display: block;
     filter: drop-shadow(0 2px 10px var(--glow)); }
-  .brand .brand-name { font-family: var(--mono); font-weight: 700;
-    font-size: 16px; letter-spacing: -.02em; color: var(--text); }
   .nav-links { display: flex; align-items: center; gap: 26px; font-size: 14px; }
   .nav-links a { color: var(--dim); transition: color .15s ease; }
   .nav-links a:hover { color: var(--text); }
@@ -96,14 +94,16 @@
   .nav-cta:hover { border-color: var(--accent-deep); background: var(--panel); }
   @media (max-width: 640px) {
     .nav-in { padding: 11px 18px; }
-    .brand .mark { width: 24px; height: 24px; }
-    .brand .brand-name { font-size: 14.5px; }
+    .brand .brand-logo { height: 20px; }
     .nav-links { gap: 16px; }
     .nav-links .hide-sm { display: none; }
   }
 
   /* ── Hero ─────────────────────────────────────────── */
   .hero { text-align: center; padding: 110px 0 84px; }
+  .hero-logo { display: block; margin: 0 auto 30px; width: min(380px, 74vw); height: auto;
+    filter: drop-shadow(0 6px 26px var(--glow)); }
+  @media (max-width: 480px) { .hero-logo { margin-bottom: 24px; } }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px;
     font-size: 13px; color: var(--dim);
@@ -145,7 +145,8 @@
 
   /* hero load animation */
   @keyframes rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
-  .hero .eyebrow { animation: rise .7s .02s both; }
+  .hero .hero-logo { animation: rise .8s .0s both; }
+  .hero .eyebrow { animation: rise .7s .1s both; }
   .hero h1 { animation: rise .8s .12s both; }
   .hero .sub { animation: rise .8s .24s both; }
   .hero .cta-row { animation: rise .8s .36s both; }
@@ -300,8 +301,7 @@
 <nav id="nav">
   <div class="nav-in">
     <a class="brand" href="#top" aria-label="genesis-agent">
-      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="#15c17c" stroke-width="2.8"><path d="M52 12 H12 V52 H52 V32 H34"/><path d="M52 19 H19 V45 H45 V39 H34"/></g></svg>
-      <span class="brand-name">genesis-agent</span>
+      <img class="brand-logo" src="assets/genesis-logo.svg" alt="genesis-agent" width="140" height="24">
     </a>
     <div class="nav-links">
       <a class="hide-sm" href="#philosophy">Philosophy</a>

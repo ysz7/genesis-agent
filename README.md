@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/banner.svg" alt="genesis-agent" width="520">
+<img src="docs/assets/genesis-logo.svg" alt="genesis-agent" width="300">
 
 **Ship a specialized agent.**
 
