@@ -11,6 +11,16 @@ syncing, since some releases change defaults.
 ## [Unreleased]
 
 ### Added
+- **LLM-judge eval template** — a second copyable eval, `evals/example_judge.py`,
+  alongside the existing substring-check one. Same golden-task shape, but each
+  answer is graded by an **LLM judge** against a rubric, running on your
+  configured provider/model (no extra key) — for cases where "correct" is fuzzy
+  (paraphrase, tone, format, reasoning) and no fixed substring fits. A comment
+  shows how to grade with a cheaper same-provider model. README gains a
+  "make them a regression suite" practice note (run your evals whenever you
+  change `persona.md`, a tool, or a setting) and an optional, key-gated CI job
+  snippet (documented, not enabled — the default workflow stays secret-free).
+  The core still never imports `pydantic_evals`.
 - **Config typo guard** — `load_config` now warns (never fails) on an
   unrecognized top-level `settings.yaml` key that closely resembles a real one,
   e.g. `settings.yaml: unknown key 'schedular' — did you mean 'scheduler'?`.

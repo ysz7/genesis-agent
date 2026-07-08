@@ -392,13 +392,43 @@ Score your agent against golden tasks with [pydantic-evals](https://ai.pydantic.
 
 ```bash
 uv sync --extra evals
-uv run python evals/example_eval.py
+uv run python evals/example_eval.py     # exact checks (no second model)
+uv run python evals/example_judge.py    # LLM-judge checks (grades on your model)
 ```
 
-[`evals/example_eval.py`](evals/example_eval.py) is a copyable template — a tiny
-`Dataset` of cases scored by a plain (no-second-model) `Contains` check, run
-against the live agent. Swap in your own cases and evaluators. The core never
-imports `pydantic_evals`.
+Two copyable templates, each a tiny `Dataset` of cases run against the live agent:
+
+- [`evals/example_eval.py`](evals/example_eval.py) — scored by a plain
+  `Contains` check. Cheap and deterministic; use it wherever a fixed substring
+  proves the answer.
+- [`evals/example_judge.py`](evals/example_judge.py) — scored by an **LLM
+  judge** against a rubric, running on your configured provider/model (no extra
+  key). Use it where "correct" is fuzzy: paraphrase, tone, format, reasoning.
+
+Swap in your own cases and evaluators. The core never imports `pydantic_evals`.
+
+**Make them a regression suite.** Golden tasks only catch regressions if you run
+them: whenever you change `persona.md`, a tool, or a model/setting, run your
+evals and confirm the report is still green before shipping. Grow the dataset
+as you find failures — each bug becomes a case that stays fixed.
+
+**In CI (optional, needs a key).** These call your real provider, so they're not
+wired into the default workflow (`ci.yml` runs only `pytest`, no secrets). To
+gate merges on evals, add a job that installs the extra and sets your key from a
+repository secret — for example:
+
+```yaml
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra evals
+      - run: uv run python evals/example_eval.py
+        env:
+          PROVIDER: openai
+          API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
 
 ## Planning & delegation
 
