@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-from pydantic_ai import Agent
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.usage import RunUsage
@@ -77,7 +76,8 @@ def test_delegate_isolates_context_no_history():
         return ModelResponse(parts=[TextPart(content="ok")])
 
     from agent.engine import factory as f
-    import tempfile, pathlib
+    import tempfile
+    import pathlib
     tmp = pathlib.Path(tempfile.mkdtemp())
     (tmp / "settings.yaml").write_text(_ON, encoding="utf-8")
     orig = f.build_model

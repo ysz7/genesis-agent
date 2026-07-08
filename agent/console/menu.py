@@ -18,17 +18,15 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
+from ..runtime.config import PROVIDER_DEFAULTS
 from . import display
 
 EMERALD = "#15c17c"
 console = Console()
 PROVIDERS = ["openai", "anthropic", "openrouter", "ollama"]
-_DEFAULT_MODELS = {
-    "openai": "gpt-4o-mini",
-    "anthropic": "claude-haiku-4-5",
-    "openrouter": "openai/gpt-4o-mini",
-    "ollama": "llama3.1:8b",
-}
+# Model defaults live in ONE place (runtime.config.PROVIDER_DEFAULTS); the menu,
+# wizard, and CLI all read that map so a generation bump is a single edit.
+_DEFAULT_MODELS = PROVIDER_DEFAULTS
 
 
 def _clear() -> None:
@@ -586,7 +584,7 @@ def _settings(root: Path) -> None:
             if p is not None and p < len(PROVIDERS):
                 _set_env(env_file, "PROVIDER", PROVIDERS[p])
         elif choice == 1:
-            _prompt_set(env_file, "MODEL", "Model id (e.g. gpt-4o-mini, llama3.1:8b)")
+            _prompt_set(env_file, "MODEL", "Model id (e.g. gpt-4.1-mini, qwen3)")
         elif choice == 2:
             _prompt_set(env_file, "API_KEY", "API key for the provider")
         elif choice == 3:

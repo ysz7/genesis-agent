@@ -134,9 +134,9 @@ def semantic_recall(deps, query: str, limit: int) -> str:
         )[:limit]
 
     lessons = [str(e.get("lesson", "")).strip() for e in chosen]
-    lessons = [l for l in lessons if l]
+    lessons = [lesson for lesson in lessons if lesson]
     if not lessons:
         return ""
     header = "Relevant lessons from past sessions:" if qvec is not None \
         else "Lessons from past sessions:"
-    return header + "\n" + "\n".join(f"- {l}" for l in lessons)
+    return header + "\n" + "\n".join(f"- {lesson}" for lesson in lessons)

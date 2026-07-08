@@ -73,7 +73,7 @@ async def run_agent(task: str) -> str:
 
 # Grade on the SAME provider/key as the agent. To spend less, judge with a
 # smaller model of your provider — uncomment one before build_model, e.g.:
-#   _cfg.model = "gpt-4o-mini"        # openai
+#   _cfg.model = "gpt-4.1-mini"       # openai
 #   _cfg.model = "claude-haiku-4-5"   # anthropic
 _cfg = load_config(AGENT_ROOT)
 JUDGE_MODEL = build_model(_cfg)

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from functools import lru_cache
 
 logger = logging.getLogger("agent.guardrails")
 
@@ -33,15 +34,27 @@ def enabled(settings: dict) -> bool:
     return bool(settings.get("guardrails"))
 
 
-def _compile(patterns) -> list[re.Pattern]:
-    """Compile a list of regex patterns, skipping (with a warning) any bad one."""
+@lru_cache(maxsize=64)
+def _compile_cached(patterns: tuple[str, ...]) -> tuple[re.Pattern, ...]:
+    """Compile a tuple of patterns once; skip (with a warning) any bad one.
+
+    Cached on the pattern tuple, so a run's guardrail regexes compile the first
+    time they're seen and are reused on every subsequent run instead of being
+    recompiled per call. Patterns come from ``settings.yaml`` (a small, fixed
+    set), so the cache stays tiny.
+    """
     out: list[re.Pattern] = []
-    for p in patterns or []:
+    for p in patterns:
         try:
-            out.append(re.compile(str(p)))
+            out.append(re.compile(p))
         except re.error as exc:
             logger.warning("ignoring invalid guardrail pattern %r: %s", p, exc)
-    return out
+    return tuple(out)
+
+
+def _compile(patterns) -> tuple[re.Pattern, ...]:
+    """Compile a list of regex patterns (memoized — see :func:`_compile_cached`)."""
+    return _compile_cached(tuple(str(p) for p in (patterns or [])))
 
 
 def _section(settings: dict, which: str) -> dict:

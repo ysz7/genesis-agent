@@ -179,13 +179,21 @@ def _build_usage_limits(settings: dict) -> Any:
     return UsageLimits(**kwargs) if kwargs else None
 
 
+# ── Per-provider default model ids ───────────────────────────────────────────
+# THE ONE PLACE to bump a model generation. When a provider ships a new
+# generation, update the id here — the CLI, the wizard, and the start menu all
+# read this map (they import PROVIDER_DEFAULTS), so there's nothing else to sync.
+# Deliberately cheap, tool-capable defaults: a fresh copy should run affordably.
+PROVIDER_DEFAULTS = {
+    "openai": "gpt-4.1-mini",
+    "anthropic": "claude-haiku-4-5",
+    "openrouter": "openai/gpt-4.1-mini",
+    "ollama": "qwen3",
+}
+
+
 def _default_model(provider: str) -> str:
-    return {
-        "openai": "gpt-4o-mini",
-        "anthropic": "claude-haiku-4-5",
-        "openrouter": "openai/gpt-4o-mini",
-        "ollama": "qwen2.5",
-    }.get(provider, "gpt-4o-mini")
+    return PROVIDER_DEFAULTS.get(provider, PROVIDER_DEFAULTS["openai"])
 
 
 def _provider_key(provider: str) -> str | None:

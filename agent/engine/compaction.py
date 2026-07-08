@@ -38,6 +38,7 @@ Design notes:
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import Any, Callable
 
 from pydantic_ai import RunContext
@@ -156,8 +157,10 @@ def build_history_processor(config: Any, model: Any) -> Callable | None:
     budget = int(settings.get("context_budget", 100000))
     threshold = int(budget * 0.6)
     # Summary cache: old-segment fingerprint → injected message pair. A REPL
-    # session re-summarizes only when the compacted region grows.
-    cache: dict[tuple[int, int], list[ModelMessage]] = {}
+    # session re-summarizes only when the compacted region grows. Bounded to the
+    # last few fingerprints (LRU) so a week-long session doesn't grow it forever.
+    cache: OrderedDict[tuple[int, int], list[ModelMessage]] = OrderedDict()
+    cache_max = 8
 
     async def compact_history(
         ctx: RunContext[AgentDeps], messages: list[ModelMessage]
@@ -171,6 +174,8 @@ def build_history_processor(config: Any, model: Any) -> Callable | None:
 
         key = (len(old), sum(len(_part_text(p)) for m in old for p in m.parts))
         block = cache.get(key)
+        if block is not None:
+            cache.move_to_end(key)  # LRU: mark this fingerprint as recently used
         if block is None:
             response = await model_request(
                 model,
@@ -188,6 +193,8 @@ def build_history_processor(config: Any, model: Any) -> Callable | None:
                 ModelResponse(parts=[TextPart(content=_ACK)]),
             ]
             cache[key] = block
+            if len(cache) > cache_max:
+                cache.popitem(last=False)  # evict the least-recently-used entry
             try:  # the summary call costs tokens — keep Phase 3 limits honest
                 ctx.usage.incr(response.usage)
             except Exception:  # noqa: BLE001 - usage accounting must never kill a run

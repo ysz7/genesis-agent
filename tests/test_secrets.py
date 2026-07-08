@@ -6,7 +6,6 @@ from agent.runtime.config import load_config
 from agent.runtime.context import build_deps, close_deps
 from agent.runtime import secrets as secrets_mod
 from agent.engine.registry import discover_tools
-from agent.tools.builtins import read_file
 
 
 def _find(tools, name):

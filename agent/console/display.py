@@ -235,7 +235,7 @@ def _plan_block(content: str, step: dict) -> None:
 
 def _tree_close(step: dict) -> None:
     if step["n"] > 0:
-        console.print(f"  [green]└[/] [dim]done[/]")
+        console.print("  [green]└[/] [dim]done[/]")
 
 
 def inline_stats(usage: Any, elapsed: float, model: str = "") -> None:
@@ -315,7 +315,7 @@ _PRICES = {
     "o4-mini": (1.10, 4.40),
     "claude-haiku": (1.0, 5.0),
     "claude-sonnet": (3.0, 15.0),
-    "claude-opus": (15.0, 75.0),
+    "claude-opus": (5.0, 25.0),
 }
 
 

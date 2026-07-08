@@ -16,7 +16,6 @@ from pydantic_ai.messages import (
     ModelRequest, ModelResponse, UserPromptPart, TextPart,
 )
 
-from agent.gateways import base
 from agent.gateways.base import (
     AccessControl, Inbound, Pipeline, Quota,
     any_gateway_enabled, gateway_enabled, gateway_settings, store_guard,
@@ -146,7 +145,7 @@ def test_pipeline_runs_and_threads_per_user(tmp_path):
     agent = _FakeAgent()
     pipe = Pipeline("telegram", agent, _deps(store), {})
     out1 = asyncio.run(pipe.run_turn(Inbound(user_id="7", text="hi")))
-    out2 = asyncio.run(pipe.run_turn(Inbound(user_id="7", text="again")))
+    asyncio.run(pipe.run_turn(Inbound(user_id="7", text="again")))  # 2nd turn: build history
     assert out1 == "echo:hi"
     assert agent.histories[0] is None                # first turn: no prior history
     assert agent.histories[1] is not None            # second turn: thread reloaded

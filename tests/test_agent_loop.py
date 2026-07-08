@@ -7,7 +7,6 @@ returns a canned output — enough to prove the loop wires tools in, invokes one
 and produces a result, all offline and in milliseconds.
 """
 
-from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.messages import ToolCallPart
 

@@ -82,7 +82,8 @@ def test_tools_off_by_code_default(tmp_path):
 
 def test_template_settings_enable_scheduler():
     # The shipped template turns the scheduler on (out-of-box behaviour).
-    import pathlib, yaml
+    import pathlib
+    import yaml
 
     template = pathlib.Path(__file__).resolve().parents[1] / "settings.yaml"
     settings = yaml.safe_load(template.read_text(encoding="utf-8"))

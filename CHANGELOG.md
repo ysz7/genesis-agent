@@ -10,7 +10,27 @@ syncing, since some releases change defaults.
 
 ## [Unreleased]
 
+### Changed
+- **Model defaults refreshed & centralized** — the per-provider default model
+  ids now live in **one** place, `config.PROVIDER_DEFAULTS` (the single bump
+  point); the CLI, wizard, and start menu all read it instead of each carrying
+  its own copy (they had already drifted on the Ollama default). Refreshed to
+  current-generation ids — openai `gpt-4o-mini` → `gpt-4.1-mini`, ollama
+  `qwen2.5`/`llama3.1:8b` → `qwen3` — with `.env.example`, the README provider
+  table, and `settings.yaml` examples updated to match. The live-console cost
+  table also corrects stale Opus pricing (`$15/$75` → `$5/$25`).
+
+### Performance
+- **Guardrail regexes compile once** — the input/output guardrail patterns are
+  memoized on first use instead of being recompiled every run.
+- **Compaction summary cache is bounded** — the per-fingerprint summary cache is
+  now an LRU capped at 8 entries, so a week-long REPL session can't grow it
+  without bound.
+
 ### Added
+- **Dev-only `ruff` lint** — `ruff` is now a dev dependency with a minimal
+  `[tool.ruff]` (line-length 100, py310) and a CI `lint` job (`ruff check .`).
+  Lint only, no formatter — template users and the runtime are unaffected.
 - **LLM-judge eval template** — a second copyable eval, `evals/example_judge.py`,
   alongside the existing substring-check one. Same golden-task shape, but each
   answer is graded by an **LLM judge** against a rubric, running on your

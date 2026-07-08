@@ -54,8 +54,8 @@ history_keep: 40
 # ~60% of this (older history is summarized, not truncated, so early facts
 # survive). Default: 100000.
 #   GPT-4o / Claude / most cloud   : 100000
-#   qwen2.5 via Ollama (32k)       : 24000
-#   llama3.1:8b at default num_ctx : 6000
+#   qwen3 via Ollama (32k)         : 24000
+#   llama3.3 at default num_ctx    : 6000
 context_budget: 100000
 
 # Auto-compaction behaviour. enabled: true by default (set false to fall back to
@@ -72,8 +72,8 @@ compaction:
 # cleaner). Default: 20000 (~5k tokens). One big result can swamp a small local
 # context, so lower it there.
 #   cloud (GPT/Claude)             : 20000
-#   local 32k ctx (qwen2.5)        : 8000
-#   local 8k ctx (llama3.1:8b)     : 3000
+#   local 32k ctx (qwen3)          : 8000
+#   local 8k ctx (llama3.3)        : 3000
 max_tool_output: 20000
 
 # ── Guardrails ─────────────────────────────────────────────────────────────────
@@ -111,8 +111,8 @@ retries: 2
 # if the primary model fails for a transient reason (HTTP error, rate-limit,
 # outage), the run transparently retries the next one. For availability, not bad
 # output. Unset = no fallback (single model, as before). Shown in the banner.
-#   openai   : model_fallbacks: [gpt-4o]
-#   anthropic: model_fallbacks: [claude-sonnet-4-6]
+#   openai   : model_fallbacks: [gpt-4.1]
+#   anthropic: model_fallbacks: [claude-sonnet-5]
 # model_fallbacks: []
 
 # ── Sandbox & tools ─────────────────────────────────────────────────────────────

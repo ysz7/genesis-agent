@@ -156,7 +156,7 @@ def test_delivery_independent_consumers(tmp_path):
 def test_delivery_ages_out(tmp_path):
     store = _store(tmp_path)
     job = scheduler.add_job(store, "ping", 60)
-    rec = scheduler.enqueue_delivery(store, job, "x", now=0)        # ancient
+    scheduler.enqueue_delivery(store, job, "x", now=0)             # ancient
     assert scheduler.pending_for(store, "telegram", now=99999) == []
     store.close()
 

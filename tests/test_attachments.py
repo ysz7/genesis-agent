@@ -49,16 +49,20 @@ def test_inline_no_docs_unchanged():
 
 
 def test_is_attachable_path(tmp_path):
-    md = tmp_path / "a.md"; md.write_text("x", encoding="utf-8")
-    png = tmp_path / "b.png"; png.write_bytes(b"\x89PNG")
-    bad = tmp_path / "c.zzz"; bad.write_text("x", encoding="utf-8")
+    md = tmp_path / "a.md"
+    md.write_text("x", encoding="utf-8")
+    png = tmp_path / "b.png"
+    png.write_bytes(b"\x89PNG")
+    bad = tmp_path / "c.zzz"
+    bad.write_text("x", encoding="utf-8")
     assert is_attachable_path(str(md)) and is_attachable_path(f'"{png}"')
     assert not is_attachable_path(str(bad))           # unsupported type
     assert not is_attachable_path("nope.md")          # not a file
 
 
 def test_extract_attachments_includes_text_docs(tmp_path):
-    md = tmp_path / "notes.md"; md.write_text("hi", encoding="utf-8")
+    md = tmp_path / "notes.md"
+    md.write_text("hi", encoding="utf-8")
     clean, paths = extract_attachments(f'see "{md}" thanks')
     assert [p for p in paths if p.endswith("notes.md")]
     assert clean == "see thanks"

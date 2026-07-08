@@ -15,14 +15,15 @@ import shutil
 from pathlib import Path
 
 from . import display
-from .menu import EMERALD, PROVIDERS, _clear, _edit_line, console, select
-
-_DEFAULT_MODELS = {
-    "openai": "gpt-4o-mini",
-    "anthropic": "claude-haiku-4-5",
-    "openrouter": "openai/gpt-4o-mini",
-    "ollama": "llama3.1:8b",
-}
+from .menu import (
+    EMERALD,
+    PROVIDERS,
+    _clear,
+    _DEFAULT_MODELS,  # runtime.config.PROVIDER_DEFAULTS — the one bump point
+    _edit_line,
+    console,
+    select,
+)
 
 
 def _pause() -> None:
@@ -94,8 +95,8 @@ def run_wizard(root: str | None = None) -> int:
     console.print()
     console.print(f"  [dim]cd ../{name}[/]")
     if not api_key and provider != "ollama":
-        console.print(f"  [dim]edit .env  (set API_KEY)[/]")
-    console.print(f"  [dim]edit persona.md, drop tools in tools/, then run start.cmd / ./start.sh[/]")
+        console.print("  [dim]edit .env  (set API_KEY)[/]")
+    console.print("  [dim]edit persona.md, drop tools in tools/, then run start.cmd / ./start.sh[/]")
     console.print()
     _pause()
     return 0

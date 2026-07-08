@@ -12,7 +12,7 @@ def test_defaults_when_empty(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     cfg = load_config(tmp_path)
     assert cfg.provider == "openai"
-    assert cfg.model == "gpt-4o-mini"
+    assert cfg.model == "gpt-4.1-mini"
     assert cfg.persona  # falls back to a built-in general persona
     assert (tmp_path / "workspace").is_dir()  # created on load
 

@@ -53,7 +53,7 @@ def test_transcripts_write_header_and_parts(tmp_path):
 
     files = _transcript_files(tmp_path)
     assert len(files) == 1
-    lines = [json.loads(l) for l in files[0].read_text(encoding="utf-8").splitlines()]
+    lines = [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines()]
     header, *parts = lines
     assert header["task"] == "demo task"
     assert header["duration_s"] == 1.23

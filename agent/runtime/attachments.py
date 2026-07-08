@@ -177,6 +177,6 @@ def vision_hint(exc: Exception) -> str:
     if any(m in msg for m in _VISION_MARKERS):
         return (
             " — this model may not support image/file input; try a vision-capable "
-            "model (e.g. gpt-4o, claude-*)"
+            "model (e.g. gpt-4.1, claude-*)"
         )
     return ""

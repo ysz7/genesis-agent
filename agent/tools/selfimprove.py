@@ -293,7 +293,7 @@ def memory_digest(workspace, limit: int = 5) -> str:
             lessons.append(json.loads(line).get("lesson", ""))
         except json.JSONDecodeError:
             continue
-    lessons = [l for l in lessons if l]
+    lessons = [lesson for lesson in lessons if lesson]
     if not lessons:
         return ""
-    return "Lessons from past sessions:\n" + "\n".join(f"- {l}" for l in lessons)
+    return "Lessons from past sessions:\n" + "\n".join(f"- {lesson}" for lesson in lessons)

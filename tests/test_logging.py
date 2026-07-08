@@ -37,7 +37,7 @@ def test_runlog_appends_jsonl(tmp_path):
 
     lines = (tmp_path / "workspace" / "runs.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
-    first, second = (json.loads(l) for l in lines)
+    first, second = (json.loads(line) for line in lines)
     assert first == {**first, "task": "demo task", "duration_s": 1.23, "tokens": 42, "ok": True}
     assert "ts" in first and "error" not in first
     assert second["ok"] is False and second["error"] == "boom"

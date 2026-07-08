@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-from pydantic_ai import Agent
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 

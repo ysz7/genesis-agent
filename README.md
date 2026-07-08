@@ -314,10 +314,10 @@ for heavy use, swap in a search API (Tavily/Brave) in your own `tools/` file.
 
 | `PROVIDER`   | `MODEL` example                | API key | Notes |
 |--------------|--------------------------------|---------|-------|
-| `openai`     | `gpt-4o-mini`                  | ✓       | |
+| `openai`     | `gpt-4.1-mini`                 | ✓       | |
 | `anthropic`  | `claude-haiku-4-5`             | ✓       | |
 | `openrouter` | `openai/gpt-oss-120b:free`     | ✓       | `BASE_URL` auto-set |
-| `ollama`     | `llama3.1:8b`                  | ✗       | offline, no key needed |
+| `ollama`     | `qwen3`                        | ✗       | offline, no key needed |
 
 Switching is a `.env` edit — no code changes.
 
@@ -341,7 +341,7 @@ Local models work, with two gotchas:
     disable: [run_shell]     # keep the model focused; re-enable as needed
   ```
 
-- **Model choice.** Use a model trained for tool calling — `qwen2.5` 7B+ is a
+- **Model choice.** Use a model trained for tool calling — `qwen3` 7B+ is a
   reliable floor; expect flaky tool/structured output below ~7B. These hints
   are mirrored in `settings.yaml` comments for first-time users.
 
@@ -459,7 +459,7 @@ subagent is a markdown file, `workspace/agents/<name>.md`:
 description: Researches a topic from primary sources and returns a 3-bullet brief.
 tools:
   allow: [fetch_url, read_file, write_file]   # omit to inherit the parent's tools
-model: gpt-4o-mini                            # optional — same provider, cheaper/stronger model
+model: gpt-4.1-mini                           # optional — same provider, cheaper/stronger model
 ---
 You are a meticulous research sub-agent. Fetch primary sources, cross-check, and
 return a tight brief with links.
