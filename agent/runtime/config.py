@@ -11,6 +11,8 @@ Nothing else in the codebase reads these files directly; they take a ``Config``.
 
 from __future__ import annotations
 
+import difflib
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +20,25 @@ from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+
+logger = logging.getLogger("agent.config")
+
+# Every recognized TOP-LEVEL key in settings.yaml. THE source of truth for the
+# typo guard below — update it here when you add a settings key (a matching test
+# asserts every key documented in settings.yaml appears in this set, so the two
+# can't drift apart). The last three are read by the code but intentionally
+# undocumented in the template (opt-in run/transcript logging). Vertical keys
+# (symbols, feeds, thresholds, …) are deliberately absent: they're the user's
+# escape hatch and must never be flagged.
+KNOWN_SETTINGS_KEYS = frozenset({
+    "name", "store", "workspace", "render_markdown", "history_keep", "threads",
+    "context_budget", "compaction", "max_tool_output", "limits", "retries",
+    "model_settings", "model_fallbacks", "sandbox", "tools", "redact_secrets",
+    "guardrails", "serve_timeout", "prompt_caching", "attachments", "planning",
+    "scheduler", "subagents", "self_improvement", "memory_recall",
+    "generated_tools", "approvals", "memory", "mcp", "gateways",
+    "log_runs", "log_transcripts", "transcripts_keep",
+})
 
 
 @dataclass
@@ -82,6 +103,7 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
         loaded = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             settings = loaded
+            _warn_unknown_keys(settings)
 
     # 3. persona / system prompt
     persona_path = root_path / "persona.md"
@@ -111,6 +133,27 @@ def load_config(root: str | os.PathLike | None = None) -> Config:
         usage_limits=_build_usage_limits(settings),
         model_settings=model_settings,
     )
+
+
+def _warn_unknown_keys(settings: dict) -> None:
+    """Warn (never fail) on a settings key that looks like a typo of a real one.
+
+    A missing key silently disables its feature (``schedular:`` never starts the
+    scheduler), so a close miss of a KNOWN key gets a one-line hint with the
+    likely intended spelling. Keys that resemble nothing known are treated as
+    the vertical's own config (``symbols``, ``feeds``, …) and pass silently.
+    """
+    for key in settings:
+        if not isinstance(key, str) or key in KNOWN_SETTINGS_KEYS:
+            continue
+        # cutoff 0.8: single-char typos of a real key score ~0.89+, while the
+        # closest legitimate vertical key (`thresholds` vs `threads`) is 0.71 —
+        # so real slips warn and the vertical's own config stays silent.
+        match = difflib.get_close_matches(key, KNOWN_SETTINGS_KEYS, n=1, cutoff=0.8)
+        if match:
+            logger.warning(
+                "settings.yaml: unknown key %r — did you mean %r?", key, match[0]
+            )
 
 
 def _build_usage_limits(settings: dict) -> Any:

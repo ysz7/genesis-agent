@@ -8,6 +8,19 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Added
+- **Config typo guard** — `load_config` now warns (never fails) on an
+  unrecognized top-level `settings.yaml` key that closely resembles a real one,
+  e.g. `settings.yaml: unknown key 'schedular' — did you mean 'scheduler'?`.
+  Catches the silent-misconfiguration class where a misspelled key just
+  disables its feature. Keys that resemble nothing known are treated as the
+  vertical's own config (`symbols`, `feeds`, …) and pass silently, so the
+  user's escape hatch is never flagged. The recognized-key set
+  (`config.KNOWN_SETTINGS_KEYS`) is the single source of truth; a test asserts
+  every key documented in the template appears in it, so the two can't drift.
+
 ## [1.3.4] — 2026-07-07
 
 ### Added
