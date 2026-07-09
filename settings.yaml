@@ -285,10 +285,16 @@ scheduler:
 # UPDATING an existing subagent asks for approval (once/always/deny) so a
 # relied-upon specialist isn't silently changed. Set allow_authoring: false for
 # a fixed, human-curated roster.
+#
+# PARALLEL fan-out: `delegate_many(tasks)` / `delegate_to_many(name, tasks)` run
+# independent subtasks concurrently and return one answer per task, in order.
+# max_parallel caps how many run at once (default 4); a failed subtask returns an
+# error in its slot without sinking its siblings.
 subagents:
   enabled: true
   max_depth: 1
   allow_authoring: true
+  max_parallel: 4
 
 # ── Self-improvement (optional) ─────────────────────────────────────────────────
 # Lets the agent extend itself, all sandboxed to workspace/. Shipped ON in this

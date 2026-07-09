@@ -8,6 +8,13 @@ parent's context stays lean:
 - ``delegate_to(name, task)`` — a *named, specialized* sub-agent defined in
   ``workspace/agents/<name>.md`` (its own persona + tool allowance).
 
+Plus their concurrent fan-out twins (Phase 33) for INDEPENDENT subtasks — one
+sub-agent per task, run under ``asyncio.gather`` (capped by
+``subagents.max_parallel``, default 4), answers returned in input order:
+
+- ``delegate_many(tasks)`` — parallel unnamed delegation.
+- ``delegate_to_many(name, tasks)`` — one named specialist over a batch.
+
 Plus authoring tools (gated by ``subagents.allow_authoring``, default on):
 
 - ``write_agent`` / ``read_agent`` — create, improve, or read a subagent
@@ -194,22 +201,33 @@ def _fold_usage(ctx: RunContext[AgentDeps], result) -> None:
         pass
 
 
-def _run_subagent(ctx, task, *, exclude, persona_override=None, model_override=None,
-                  label="Sub-agent"):
-    """Build a fresh sub-agent (isolated history), run *task*, fold usage, return output."""
+def _prepare_subagent(deps, *, exclude, persona_override=None, model_override=None):
+    """Build a fresh sub-agent + its isolated deps (shared by sync and async paths).
+
+    Isolated context = fresh run with no message_history. Share state (store,
+    http, workspace); give a fresh ``extra`` carrying the new depth so a parent's
+    plan / depth don't leak in and concurrent calls don't collide.
+    """
     from ..engine.factory import build_agent  # local import avoids an import cycle
 
-    deps = ctx.deps
     depth, _ = _depth(deps)
     sub_agent = build_agent(
         deps.config, exclude_tools=exclude, persona_override=persona_override,
         model_override=model_override,
     )
-    # Isolated context = fresh run with no message_history. Share state (store,
-    # http, workspace); give a fresh `extra` carrying the new depth so a parent's
-    # plan / depth don't leak in and concurrent calls don't collide.
     sub_deps = dataclasses.replace(deps, extra={"delegation_depth": depth + 1})
+    return sub_agent, sub_deps
+
+
+def _run_subagent(ctx, task, *, exclude, persona_override=None, model_override=None,
+                  label="Sub-agent"):
+    """Build a fresh sub-agent (isolated history), run *task*, fold usage, return output."""
+    deps = ctx.deps
     try:
+        sub_agent, sub_deps = _prepare_subagent(
+            deps, exclude=exclude, persona_override=persona_override,
+            model_override=model_override,
+        )
         result = sub_agent.run_sync(
             task, deps=sub_deps, usage_limits=deps.config.usage_limits
         )
@@ -217,6 +235,65 @@ def _run_subagent(ctx, task, *, exclude, persona_override=None, model_override=N
         return f"{label} error: {exc}"
     _fold_usage(ctx, result)
     return str(result.output)
+
+
+async def _arun_subagent(ctx, task, *, exclude, persona_override=None,
+                         model_override=None, label="Sub-agent", sem=None):
+    """Async twin of :func:`_run_subagent` for concurrent fan-out.
+
+    Uses ``agent.run`` (not ``run_sync``) so many sub-agents share one event
+    loop; ``sem`` caps how many run at once. Per-child failures come back as an
+    error string (never raised) so one failure can't sink its siblings; usage
+    still folds into the parent for honest aggregate budgeting.
+    """
+    deps = ctx.deps
+    try:
+        sub_agent, sub_deps = _prepare_subagent(
+            deps, exclude=exclude, persona_override=persona_override,
+            model_override=model_override,
+        )
+        if sem is not None:
+            async with sem:
+                result = await sub_agent.run(
+                    task, deps=sub_deps, usage_limits=deps.config.usage_limits
+                )
+        else:
+            result = await sub_agent.run(
+                task, deps=sub_deps, usage_limits=deps.config.usage_limits
+            )
+    except Exception as exc:  # noqa: BLE001 - surface the sub-agent's failure in its slot
+        return f"{label} error: {exc}"
+    _fold_usage(ctx, result)
+    return str(result.output)
+
+
+def _max_parallel(deps: AgentDeps) -> int:
+    """Concurrency cap for fan-out (``subagents.max_parallel``, default 4, min 1)."""
+    settings = deps.settings.get("subagents") or {}
+    try:
+        return max(1, int(settings.get("max_parallel", 4)))
+    except (TypeError, ValueError):
+        return 4
+
+
+async def _fan_out(ctx, jobs, *, label_for):
+    """Run ``(task, exclude, persona, model)`` jobs concurrently, results in input order."""
+    import asyncio
+
+    sem = asyncio.Semaphore(_max_parallel(ctx.deps))
+    results = await asyncio.gather(*(
+        _arun_subagent(
+            ctx, task, exclude=exclude, persona_override=persona,
+            model_override=model, label=label_for(i), sem=sem,
+        )
+        for i, (task, exclude, persona, model) in enumerate(jobs)
+    ), return_exceptions=True)
+    # _arun_subagent already stringifies child failures; return_exceptions is a
+    # backstop for anything unexpected, normalized to a string in the same slot.
+    return [
+        r if isinstance(r, str) else f"{label_for(i)} error: {r}"
+        for i, r in enumerate(results)
+    ]
 
 
 def _base_exclude(depth: int, max_depth: int) -> set[str]:
@@ -275,6 +352,70 @@ def delegate_to(ctx: RunContext[AgentDeps], name: str, task: str) -> str:
     return _run_subagent(
         ctx, task, exclude=exclude, persona_override=spec.persona,
         model_override=spec.model, label=f"Subagent '{spec.name}'",
+    )
+
+
+async def delegate_many(ctx: RunContext[AgentDeps], tasks: list[str]) -> list[str]:
+    """Delegate several INDEPENDENT subtasks at once; get back one answer each.
+
+    Like ``delegate`` but concurrent: each task runs in its own fresh sub-agent
+    (same persona as you, no memory of this conversation) and the answers come
+    back as a list in the SAME ORDER as ``tasks``. Use this instead of calling
+    ``delegate`` in a loop when the subtasks don't depend on each other — it's
+    the latency win on divide-and-conquer work. Keep each task fully
+    self-contained. A subtask that fails yields an error string in its slot
+    without affecting the others; concurrency is capped by
+    ``subagents.max_parallel``.
+
+    Args:
+        tasks: One complete, standalone instruction per sub-agent.
+    """
+    depth, max_depth = _depth(ctx.deps)
+    if depth >= max_depth:
+        return [
+            f"Refused: delegation depth limit ({max_depth}) reached — this "
+            f"sub-agent cannot delegate further."
+        ]
+    if not tasks:
+        return []
+    exclude = _base_exclude(depth, max_depth)
+    jobs = [(task, exclude, None, None) for task in tasks]
+    return await _fan_out(ctx, jobs, label_for=lambda i: f"Sub-agent {i + 1}")
+
+
+async def delegate_to_many(
+    ctx: RunContext[AgentDeps], name: str, tasks: list[str]
+) -> list[str]:
+    """Fan several INDEPENDENT subtasks out to the SAME named specialist at once.
+
+    Like ``delegate_to`` but concurrent: every task runs against the persona and
+    tool allowance of ``workspace/agents/<name>.md``, in isolated context, and
+    answers return as a list ordered like ``tasks``. Use it to run one
+    specialist over a batch (e.g. review five files) in parallel. A failed
+    subtask yields an error string in its slot; concurrency is capped by
+    ``subagents.max_parallel``.
+
+    Args:
+        name: The subagent's name (as shown in the roster / its file stem).
+        tasks: One complete, standalone instruction per run of that sub-agent.
+    """
+    deps = ctx.deps
+    depth, max_depth = _depth(deps)
+    if depth >= max_depth:
+        return [
+            f"Refused: delegation depth limit ({max_depth}) reached — this "
+            f"sub-agent cannot delegate further."
+        ]
+    if not tasks:
+        return []
+    spec = load_spec(deps.workspace, name)
+    if spec is None:
+        known = ", ".join(s.name for s in load_specs(deps.workspace)) or "(none defined)"
+        return [f"Error: no subagent named {name!r}. Known: {known}."]
+    exclude = _base_exclude(depth, max_depth) | _tool_exclusions(deps.config, spec)
+    jobs = [(task, exclude, spec.persona, spec.model) for task in tasks]
+    return await _fan_out(
+        ctx, jobs, label_for=lambda i: f"Subagent '{spec.name}' #{i + 1}"
     )
 
 
@@ -381,6 +522,6 @@ def read_agent(ctx: RunContext[AgentDeps], name: str) -> str:
 
 
 #: Delegation tools — registered when ``subagents.enabled`` is true.
-SUBAGENT_TOOLS = [delegate, delegate_to]
+SUBAGENT_TOOLS = [delegate, delegate_to, delegate_many, delegate_to_many]
 #: Authoring tools — added when ``subagents.allow_authoring`` is true (default).
 AUTHORING_TOOLS = [write_agent, read_agent]

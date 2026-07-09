@@ -1,5 +1,9 @@
-"""Phase 14: subagents / delegation — isolation, depth guard, restricted tools."""
+"""Phase 14: subagents / delegation — isolation, depth guard, restricted tools.
 
+Phase 33 (parallel fan-out) tests live at the bottom.
+"""
+
+import asyncio
 from types import SimpleNamespace
 
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -11,7 +15,12 @@ from agent.runtime.config import load_config
 from agent.runtime.context import build_deps, close_deps
 from agent.engine.factory import build_agent
 from agent.engine.registry import discover_tools, tool_names
-from agent.tools.subagents import delegate, delegate_to
+from agent.tools.subagents import (
+    delegate,
+    delegate_many,
+    delegate_to,
+    delegate_to_many,
+)
 
 _ON = "subagents:\n  enabled: true\n  max_depth: 1\n"
 
@@ -334,5 +343,89 @@ def test_end_to_end_parent_delegates(tmp_path, monkeypatch):
         # Parent saw the delegate result → "final:delegated"; the sub-agent had
         # no delegate tool (max_depth=1) so it answered directly.
         assert result.output == "final:delegated"
+    finally:
+        close_deps(deps)
+
+
+# ── Phase 33: parallel subagent fan-out ──────────────────────────────────────
+
+def _echo_task_model():
+    """A model that echoes the delegated task back (raising on 'boom'), so a
+    fan-out's per-slot ordering and failure isolation are observable."""
+
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        task = next(
+            (p.content for m in messages for p in m.parts
+             if type(p).__name__ == "UserPromptPart"),
+            "",
+        )
+        if "boom" in task:
+            raise RuntimeError("kaboom")
+        return ModelResponse(parts=[TextPart(content=f"done:{task}")])
+
+    return FunctionModel(fn)
+
+
+def test_max_parallel_setting():
+    from agent.tools.subagents import _max_parallel
+
+    assert _max_parallel(SimpleNamespace(settings={})) == 4              # default
+    assert _max_parallel(SimpleNamespace(settings={"subagents": {"max_parallel": 2}})) == 2
+    assert _max_parallel(SimpleNamespace(settings={"subagents": {"max_parallel": 0}})) == 1  # min 1
+    assert _max_parallel(SimpleNamespace(settings={"subagents": {"max_parallel": "x"}})) == 4
+
+
+def test_delegate_many_preserves_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "build_model", lambda config: _echo_task_model())
+    (tmp_path / "settings.yaml").write_text(_ON, encoding="utf-8")
+    deps = build_deps(load_config(tmp_path))
+    ctx = SimpleNamespace(deps=deps, usage=RunUsage())
+    try:
+        out = asyncio.run(delegate_many(ctx, ["alpha", "beta", "gamma"]))
+        assert out == ["done:alpha", "done:beta", "done:gamma"]  # ordered like input
+        assert ctx.usage.requests >= 3                           # every child folded in
+        assert asyncio.run(delegate_many(ctx, [])) == []          # empty is a no-op
+    finally:
+        close_deps(deps)
+
+
+def test_delegate_many_isolates_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "build_model", lambda config: _echo_task_model())
+    (tmp_path / "settings.yaml").write_text(_ON, encoding="utf-8")
+    deps = build_deps(load_config(tmp_path))
+    ctx = SimpleNamespace(deps=deps, usage=RunUsage())
+    try:
+        out = asyncio.run(delegate_many(ctx, ["ok1", "boom", "ok2"]))
+        assert out[0] == "done:ok1" and out[2] == "done:ok2"  # siblings survive
+        assert "error" in out[1] and "kaboom" in out[1]       # failure lands in its slot
+    finally:
+        close_deps(deps)
+
+
+def test_delegate_many_depth_guard(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "build_model", lambda config: _echo_task_model())
+    (tmp_path / "settings.yaml").write_text(_ON, encoding="utf-8")
+    deps = build_deps(load_config(tmp_path))
+    deps.extra["delegation_depth"] = 1  # already at max_depth
+    ctx = SimpleNamespace(deps=deps, usage=RunUsage())
+    try:
+        out = asyncio.run(delegate_many(ctx, ["a", "b"]))
+        assert len(out) == 1 and "depth limit" in out[0]  # refused before any fan-out
+    finally:
+        close_deps(deps)
+
+
+def test_delegate_to_many_batches_one_specialist(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "build_model", lambda config: _echo_task_model())
+    (tmp_path / "settings.yaml").write_text(_ON, encoding="utf-8")
+    _write_agent_file(tmp_path, "researcher", _RESEARCHER)
+    deps = build_deps(load_config(tmp_path))
+    ctx = SimpleNamespace(deps=deps, usage=RunUsage())
+    try:
+        out = asyncio.run(delegate_to_many(ctx, "researcher", ["t1", "t2"]))
+        assert out == ["done:t1", "done:t2"]
+        # unknown name → a single error slot, no fan-out
+        bad = asyncio.run(delegate_to_many(ctx, "missing", ["t1"]))
+        assert len(bad) == 1 and "no subagent named" in bad[0]
     finally:
         close_deps(deps)
