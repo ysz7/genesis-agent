@@ -69,21 +69,45 @@ def _build_one(config: Config, model_id: str) -> Model:
 def cache_model_settings(config: Config) -> dict:
     """Provider-specific prompt-caching model settings (empty unless enabled).
 
-    Enabled by ``prompt_caching: true``. For Anthropic we cache the **tool
-    definitions** — a large, fully static prefix that's identical every run, so
-    the second run within the cache TTL reads it instead of re-billing it.
+    Enabled by ``prompt_caching``. Two forms:
+
+    - ``prompt_caching: true`` — cache the **tool definitions** only (Phase 16):
+      a large, fully static prefix identical every run, so the second run within
+      the cache TTL reads it instead of re-billing it.
+    - ``prompt_caching: {tools: true, prefix: true}`` — also cache the growing
+      **conversation prefix** (Phase 34): ``prefix`` maps to Anthropic's
+      ``anthropic_cache``, an automatic breakpoint on the last cacheable block
+      that moves forward as the conversation grows, so multi-turn REPL / loop /
+      gateway sessions pay for the settled prefix once. It counts as one of
+      Anthropic's four cache slots and combines with the tool-defs breakpoint;
+      the library trims any excess. ``tools`` defaults to true in this form, so
+      turning on ``prefix`` never silently drops tool-defs caching.
 
     We deliberately do NOT cache the system instructions: genesis injects a
     dynamic datetime (and optionally skills/memory/plan) system prompt, and
-    Anthropic puts the cache breakpoint on the *last* system block — so a
-    changing system prompt would be written to cache every run but never read.
-    OpenAI caches automatically (nothing to set); other providers: no-op.
+    Anthropic puts that breakpoint on the *last* system block — so a changing
+    system prompt would be written to cache every run but never read. Note that
+    when compaction rewrites the history, the prefix cache misses on that one
+    turn (the transcript changed) and rebuilds after — acceptable, as compaction
+    is rare. OpenAI caches automatically (nothing to set); other providers: no-op.
     """
-    if not config.settings.get("prompt_caching"):
+    pc = config.settings.get("prompt_caching")
+    if not pc:
         return {}
-    if config.provider == "anthropic":
-        return {"anthropic_cache_tool_definitions": True}
-    return {}
+    if isinstance(pc, dict):
+        tools = pc.get("tools", True)
+        prefix = pc.get("prefix", False)
+    else:  # bare `true` — tools-only, unchanged from Phase 16
+        tools, prefix = True, False
+
+    if config.provider != "anthropic":  # OpenAI auto-caches; others: no-op
+        return {}
+    out: dict = {}
+    if tools:
+        out["anthropic_cache_tool_definitions"] = True
+    if prefix:
+        out["anthropic_cache"] = True
+    return out
 
 
 def thinking_model_settings(config: Config) -> dict:

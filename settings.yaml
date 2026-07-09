@@ -208,11 +208,18 @@ tools:
 log_runs: true
 
 # ── Prompt caching (optional) ─────────────────────────────────────────────────────
-# Reuse the provider's prompt cache for the static prefix to cut cost/latency on
-# repeated runs. Anthropic: caches the (static) tool definitions — the footer
-# shows "N cached" when a run reads from cache. OpenAI caches automatically;
-# other providers: no-op. Instructions aren't cached (the dynamic datetime prompt
-# would prevent hits). Cache TTL is a few minutes, so it helps bursts/loops.
+# Reuse the provider's prompt cache to cut cost/latency on repeated runs. The
+# footer shows "N cached" when a run reads from cache. OpenAI caches
+# automatically; other providers: no-op. Instructions aren't cached (the dynamic
+# datetime prompt would prevent hits). Cache TTL is a few minutes, so it helps
+# bursts/loops. Two forms:
+#   prompt_caching: true                    # Anthropic: cache the static tool defs
+#   prompt_caching: {tools: true, prefix: true}
+# The object form also caches the growing conversation PREFIX (persona + settled
+# turns) via an automatic breakpoint that moves forward as the chat grows — so
+# multi-turn REPL / loop / gateway sessions pay for the prefix once. `tools`
+# defaults on, so enabling `prefix` never drops tool-defs caching. (Compaction
+# rewrites history, so the prefix cache misses the turn it fires, then rebuilds.)
 prompt_caching: true
 
 # ── Multimodal input (optional) ──────────────────────────────────────────────────
