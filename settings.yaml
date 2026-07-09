@@ -68,6 +68,21 @@ compaction:
   keep: 12
   # max_tokens: 1024
 
+# Context editing (Phase 30). A cheaper first pass that runs BEFORE compaction,
+# off the same ~60%-of-context_budget line: it replaces the BODY of large, stale
+# tool results (run_shell / fetch_url output) with a short
+# `[tool output cleared: <tool>, <n> chars]` marker, keeping the call and its
+# reasoning. Often reclaims enough budget on tool-heavy runs to skip a full
+# summary entirely — and it's less lossy (the model still sees what ran). The
+# full output stays in the saved thread; only the model's view for that request
+# shrinks. ON by default; set enabled: false to rely on compaction alone.
+#   keep_last : recent messages left untouched (their tool output survives). 6.
+#   min_chars : only bodies larger than this are cleared. Default 2000 (~500 tok).
+context_editing:
+  enabled: true
+  keep_last: 6
+  min_chars: 2000
+
 # Cap on a SINGLE tool's output, in characters (run_shell, fetch_url, HTML
 # cleaner). Default: 20000 (~5k tokens). One big result can swamp a small local
 # context, so lower it there.

@@ -18,7 +18,7 @@ from pydantic_ai import Agent, RunContext
 
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
-from .compaction import build_history_processor
+from .compaction import build_context_editor, build_history_processor
 from .mcp import load_mcp_servers
 from .model import build_model, cache_model_settings, thinking_model_settings
 from .registry import discover_tools
@@ -106,12 +106,31 @@ def build_agent(
     if model_settings:
         kwargs["model_settings"] = model_settings
 
-    # History auto-compaction: when the conversation outgrows the context
-    # budget, old messages are replaced by a model-written summary (see
-    # engine/compaction.py). Disabled via settings `compaction: {enabled: false}`.
-    processor = build_history_processor(config, model)
-    if processor is not None:
+    # History rewriting (engine/compaction.py), two layered passes that fire off
+    # the same budget line and run in order:
+    #   1. context editing — stub the bodies of stale, heavy tool results (Phase
+    #      30, `context_editing: {enabled: false}` to disable). The cheaper pass:
+    #      if it alone gets back under budget, no summary is written.
+    #   2. compaction — replace everything past the recent tail with a model-
+    #      written summary (`compaction: {enabled: false}` to disable).
+    history_procs = [
+        p for p in (build_context_editor(config), build_history_processor(config, model))
+        if p is not None
+    ]
+    if history_procs:
         from pydantic_ai.capabilities import ProcessHistory
+
+        if len(history_procs) == 1:
+            processor = history_procs[0]
+        else:
+            procs = tuple(history_procs)
+
+            # The ctx annotation matters: Pydantic AI inspects the signature to
+            # decide whether to pass the run context (a bare `ctx` isn't enough).
+            async def processor(ctx: RunContext[AgentDeps], messages):
+                for fn in procs:  # prune first, then compact the smaller transcript
+                    messages = await fn(ctx, messages)
+                return messages
 
         kwargs["capabilities"] = [ProcessHistory(processor)]
 

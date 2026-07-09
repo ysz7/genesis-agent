@@ -11,6 +11,20 @@ syncing, since some releases change defaults.
 ## [Unreleased]
 
 ### Added
+- **Context editing — stale tool-result pruning (Phase 30)** — a cheaper history
+  pass that runs *before* compaction, off the same ~60%-of-`context_budget`
+  trigger: it replaces the **body** of large, stale `ToolReturnPart`s (run_shell /
+  fetch_url output) with a short `[tool output cleared: <tool>, <n> chars]` marker,
+  keeping the call and the reasoning that used it. When it alone brings the
+  transcript back under budget, no summary is written — cheaper and less lossy
+  than a full compaction. Copy-on-write, so the persisted thread keeps the full
+  outputs; only the model's view for that request shrinks, and the
+  `ToolCallPart`↔`ToolReturnPart` pairing is never broken (the part is kept, only
+  its content shortened). New `context_editing: {enabled, keep_last, min_chars}`
+  in `settings.yaml`, **on by default** (`keep_last: 6`, `min_chars: 2000`); set
+  `enabled: false` to rely on compaction alone. Lives in `engine/compaction.py`
+  (`prune_tool_outputs` / `build_context_editor`), composed with compaction in
+  `build_agent` as a single ordered processor.
 - **Extended thinking / reasoning budget (Phase 29)** — a per-agent, opt-in
   `thinking:` block in `settings.yaml` exposes model reasoning as a first-class
   knob (the biggest quality lever on hard tasks). `effort:` (`minimal…xhigh`,

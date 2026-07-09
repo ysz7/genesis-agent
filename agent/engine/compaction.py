@@ -37,6 +37,7 @@ Design notes:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections import OrderedDict
 from typing import Any, Callable
@@ -59,7 +60,13 @@ from ..runtime.context import AgentDeps
 
 logger = logging.getLogger("agent.compaction")
 
+# Fraction of context_budget at which history rewriting (pruning, then
+# summarization) kicks in. Shared so the two passes trigger off the same line.
+TRIGGER_FRACTION = 0.6
+
 SUMMARY_MARK = "[conversation summary]"
+
+CLEARED_MARK = "[tool output cleared: {tool}, {n} chars]"
 
 _SUMMARY_PROMPT = (
     "Summarize the conversation transcript below for use as persistent context. "
@@ -158,7 +165,7 @@ def build_history_processor(config: Any, model: Any) -> Callable | None:
     keep = int(comp.get("keep", 12))
     max_tokens = int(comp.get("max_tokens", 1024))
     budget = int(settings.get("context_budget", 100000))
-    threshold = int(budget * 0.6)
+    threshold = int(budget * TRIGGER_FRACTION)
     # Summary cache: old-segment fingerprint → injected message pair. A REPL
     # session re-summarizes only when the compacted region grows. Bounded to the
     # last few fingerprints (LRU) so a week-long session doesn't grow it forever.
@@ -209,3 +216,92 @@ def build_history_processor(config: Any, model: Any) -> Callable | None:
         return [*block, *tail]
 
     return compact_history
+
+
+# ── Context editing: stale tool-result pruning (Phase 30) ────────────────────
+
+def prune_tool_outputs(
+    messages: list[ModelMessage], keep_last: int, min_chars: int
+) -> list[ModelMessage]:
+    """Stub the *bodies* of large, old tool results — keep the pairing intact.
+
+    A cheaper alternative to full summarization: a long run of ``run_shell`` /
+    ``fetch_url`` calls is the usual context hog, and their bodies (not their
+    existence) are what's reclaimable. For every ``ToolReturnPart`` that sits
+    outside the last *keep_last* messages and whose content exceeds *min_chars*,
+    the content is replaced by a short ``[tool output cleared: <tool>, <n> chars]``
+    marker — the model still sees the call happened and what it produced, just
+    not the full payload.
+
+    Copy-on-write: the ``ToolReturnPart``/``ModelRequest`` are rebuilt via
+    ``dataclasses.replace`` so the caller's original messages (and any persisted
+    thread) keep the full outputs; only the model's view for this request shrinks.
+    Because the part is kept (only its content shortened), the
+    ``ToolCallPart``↔``ToolReturnPart`` pairing is never broken. The stub is far
+    under *min_chars*, so re-running the pass never double-prunes it.
+    """
+    keep_last = max(keep_last, 0)
+    cutoff = len(messages) - keep_last
+    if cutoff <= 0:
+        return messages
+
+    out: list[ModelMessage] = []
+    changed = False
+    for idx, m in enumerate(messages):
+        if idx >= cutoff or not isinstance(m, ModelRequest):
+            out.append(m)
+            continue
+        new_parts = []
+        pruned_here = False
+        for p in m.parts:
+            if isinstance(p, ToolReturnPart):
+                body = _part_text(p)
+                if len(body) > min_chars:
+                    stub = CLEARED_MARK.format(tool=p.tool_name, n=len(body))
+                    new_parts.append(dataclasses.replace(p, content=stub))
+                    pruned_here = True
+                    continue
+            new_parts.append(p)
+        if pruned_here:
+            out.append(dataclasses.replace(m, parts=new_parts))
+            changed = True
+        else:
+            out.append(m)
+    return out if changed else messages
+
+
+def build_context_editor(config: Any) -> Callable | None:
+    """Build the tool-output pruning processor, or None when disabled.
+
+    Opt-in via ``context_editing: {enabled, keep_last, min_chars}`` (ON by
+    default when the block is present-or-absent, like compaction). Gated on the
+    same ``context_budget * TRIGGER_FRACTION`` line as compaction: pruning is the
+    *cheaper first pass* that runs before summarization, so when it alone brings
+    the transcript back under budget, no summary call is made. Detail is kept
+    verbatim while there's room to spare.
+    """
+    settings = config.settings
+    ce = settings.get("context_editing")
+    ce = ce if isinstance(ce, dict) else {}
+    if ce.get("enabled", True) is False:
+        return None
+
+    keep_last = int(ce.get("keep_last", 6))
+    min_chars = int(ce.get("min_chars", 2000))
+    budget = int(settings.get("context_budget", 100000))
+    threshold = int(budget * TRIGGER_FRACTION)
+
+    async def edit_context(
+        ctx: RunContext[AgentDeps], messages: list[ModelMessage]
+    ) -> list[ModelMessage]:
+        if estimate_tokens(messages) <= threshold:
+            return messages  # under budget → keep tool detail verbatim
+        pruned = prune_tool_outputs(messages, keep_last, min_chars)
+        if pruned is not messages:
+            logger.info(
+                "context-edited: pruned stale tool outputs (~%d → ~%d tok)",
+                estimate_tokens(messages), estimate_tokens(pruned),
+            )
+        return pruned
+
+    return edit_context

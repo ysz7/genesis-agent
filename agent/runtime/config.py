@@ -32,7 +32,7 @@ logger = logging.getLogger("agent.config")
 # escape hatch and must never be flagged.
 KNOWN_SETTINGS_KEYS = frozenset({
     "name", "store", "workspace", "render_markdown", "history_keep", "threads",
-    "context_budget", "compaction", "max_tool_output", "limits", "retries",
+    "context_budget", "compaction", "context_editing", "max_tool_output", "limits", "retries",
     "model_settings", "model_fallbacks", "thinking", "sandbox", "tools", "redact_secrets",
     "guardrails", "serve_timeout", "prompt_caching", "attachments", "planning",
     "scheduler", "subagents", "self_improvement", "memory_recall",
