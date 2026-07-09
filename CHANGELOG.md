@@ -8,6 +8,20 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Changed
+- **Default persona gains a "deliverables discipline" rule** — `persona.md` now
+  carries a general (task-agnostic) section that keeps the agent from turning a
+  single task into a pile of files: answer in the reply by default, write a file
+  only when asked or when the result is inherently a file, produce **one**
+  consolidated deliverable (no meta-files — INDEX / README / START_HERE / a
+  summary of a summary), match effort to the ask, and stop once the task is
+  done. It limits the *output*, not the research, and explicitly steps aside when
+  the user asks for multiple files. Fixes the small-model runaway where a plain
+  research prompt spiralled into ~11 overlapping artifacts and burned the whole
+  `request_limit`.
+
 ## [1.3.5] — 2026-07-08
 
 ### Changed
