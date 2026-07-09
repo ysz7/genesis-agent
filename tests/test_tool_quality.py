@@ -72,14 +72,20 @@ def test_fetch_url_json_passthrough(tmp_path):
         close_deps(deps)
 
 
-def test_max_tool_output_caps_fetch(tmp_path):
+def test_max_tool_output_windows_fetch(tmp_path):
     def handler(request):
         return httpx.Response(200, headers={"content-type": "text/plain"}, text="a" * 500)
     ctx, deps = _ctx_with_responses(tmp_path, handler, max_tool_output=50)
     try:
         out = fetch_url(ctx, "http://x/")
-        assert out.startswith("a" * 50)
-        assert "truncated" in out and len(out) < 100
+        assert out.startswith("a" * 50)                # the window body
+        assert "showing chars 1-50 of 500" in out      # navigation footer, not silent loss
+        assert "offset=50" in out
+        # Paging with offset returns the disjoint next window.
+        nxt = fetch_url(ctx, "http://x/", offset=50)
+        assert nxt.startswith("a" * 50) and "showing chars 51-100 of 500" in nxt
+        # An offset past the end is reported, not an empty string.
+        assert "beyond end" in fetch_url(ctx, "http://x/", offset=500)
     finally:
         close_deps(deps)
 
@@ -91,7 +97,8 @@ def test_max_tool_output_caps_run_shell(tmp_path):
     ctx = SimpleNamespace(deps=deps)
     try:
         out = run_shell(ctx, "echo " + "a" * 100)
-        assert len(out) <= 10
+        assert out.startswith("a" * 10)               # head shown up to the cap
+        assert "output capped" in out                 # told it was capped, with how to narrow
     finally:
         close_deps(deps)
 

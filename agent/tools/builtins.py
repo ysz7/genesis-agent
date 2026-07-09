@@ -36,6 +36,21 @@ def _output_cap(ctx: RunContext[AgentDeps]) -> int:
     return int(ctx.deps.settings.get("max_tool_output", DEFAULT_MAX_TOOL_OUTPUT))
 
 
+def _window_note(unit: str, start: int, end: int, total: int) -> str:
+    """A one-line navigation footer telling the model the window moved.
+
+    Shared by ``read_file`` (lines) and ``fetch_url`` (chars) so a paginated
+    tool result always reads the same way: the data was not lost, the window
+    advanced, and ``offset=<end>`` fetches the next page. ``start``/``end`` are
+    the human 1-indexed bounds of *this* page; ``end`` doubles as the 0-indexed
+    offset for the next call (line/char N+1 begins at offset N).
+    """
+    return (
+        f"\n\n…(showing {unit} {start}-{end} of {total}; "
+        f"call again with offset={end})"
+    )
+
+
 class _SandboxEscape(Exception):
     """A path resolved outside the workspace while the sandbox was enabled."""
 
@@ -68,12 +83,26 @@ def _resolve(ctx: RunContext[AgentDeps], path: str) -> Path:
     return resolved
 
 
-def read_file(ctx: RunContext[AgentDeps], path: str) -> str:
+def read_file(
+    ctx: RunContext[AgentDeps],
+    path: str,
+    offset: int = 0,
+    limit: int | None = None,
+) -> str:
     """Read and return the text contents of a file.
+
+    Large files are paginated by line so nothing is silently lost: a window of
+    lines is returned and, if more remain, a footer tells you how many lines the
+    file has and how to fetch the next page. Even without ``limit`` the output
+    is capped at ``max_tool_output`` characters (the per-call window) — page
+    through the rest with ``offset`` rather than trying to read it all at once.
 
     Args:
         path: File path. Relative paths are resolved inside the workspace;
             paths outside the workspace are refused unless the sandbox is off.
+        offset: 0-indexed line to start from (default 0 = the file's start).
+        limit: Maximum number of lines to return in this call. ``None`` (the
+            default) returns as many as fit in the character window.
     """
     try:
         target = _resolve(ctx, path)
@@ -82,9 +111,30 @@ def read_file(ctx: RunContext[AgentDeps], path: str) -> str:
     if not target.exists():
         return f"Error: file not found: {target}"
     try:
-        return target.read_text(encoding="utf-8")
+        text = target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return f"Error: {target} is not a UTF-8 text file."
+
+    lines = text.splitlines(keepends=True)
+    total = len(lines)
+    start = max(0, offset)
+    if total and start >= total:
+        return f"(offset {offset} is at or beyond end of file; {total} lines total)"
+
+    cap = _output_cap(ctx)
+    hard_end = total if limit is None else min(start + max(0, limit), total)
+    end, size = start, 0
+    while end < hard_end:
+        ln = lines[end]
+        if size and size + len(ln) > cap:  # keep at least one line, then honour the cap
+            break
+        size += len(ln)
+        end += 1
+
+    window = "".join(lines[start:end])
+    if end < total:
+        window += _window_note("lines", start + 1, end, total)
+    return window
 
 
 def write_file(ctx: RunContext[AgentDeps], path: str, content: str) -> str:
@@ -149,19 +199,35 @@ def run_shell(ctx: RunContext[AgentDeps], command: str, timeout: int = 120) -> s
     out = out.strip() or "(no output)"
     if proc.returncode != 0:
         out = f"[exit {proc.returncode}]\n{out}"
-    return out[: _output_cap(ctx)]
+    cap = _output_cap(ctx)
+    if len(out) > cap:
+        # Shell output isn't stable across re-runs, so an offset is meaningless;
+        # show the head and tell the model to narrow the command instead.
+        return out[:cap] + (
+            f"\n\n[output capped: showing first {cap} of {len(out)} chars (head); "
+            f"re-run narrowing the command, e.g. piping through grep/head/tail]"
+        )
+    return out
 
 
-def fetch_url(ctx: RunContext[AgentDeps], url: str, raw: bool = False) -> str:
+def fetch_url(
+    ctx: RunContext[AgentDeps],
+    url: str,
+    raw: bool = False,
+    offset: int = 0,
+) -> str:
     """Fetch a URL and return its body as readable text.
 
     HTML pages are stripped to plain text (tags removed, links rendered as
     ``text (href)``) so the model gets prose, not markup; JSON and plain text
-    pass through unchanged. Output is truncated to the ``max_tool_output`` cap.
+    pass through unchanged. Long bodies are paginated by character: a window of
+    ``max_tool_output`` chars is returned and, if more remain, a footer says how
+    to fetch the next page — no data is silently dropped.
 
     Args:
         url: The http(s) URL to GET.
         raw: Set True to get the untouched response body (skip HTML cleaning).
+        offset: 0-indexed character to start the window from (default 0).
     """
     try:
         resp = ctx.deps.http.get(url)
@@ -171,8 +237,16 @@ def fetch_url(ctx: RunContext[AgentDeps], url: str, raw: bool = False) -> str:
     text = resp.text
     if not raw and _looks_like_html(resp, text):
         text = html_to_text(text)
+    total = len(text)
+    start = max(0, offset)
+    if total and start >= total:
+        return f"(offset {offset} is beyond end of body; {total} chars total)"
     cap = _output_cap(ctx)
-    return text[:cap] + ("…(truncated)" if len(text) > cap else "")
+    end = min(start + cap, total)
+    window = text[start:end]
+    if end < total:
+        window += _window_note("chars", start + 1, end, total)
+    return window
 
 
 def _looks_like_html(resp, text: str) -> bool:
