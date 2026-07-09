@@ -53,7 +53,7 @@ from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
 from ..engine import guardrails
-from ..engine.runner import Done, Reason, Think, ToolCall, ToolResult, iter_events
+from ..engine.runner import Continue, Done, Reason, Think, ToolCall, ToolResult, iter_events
 from ..engine.verify import run_then_verify, verify_and_revise
 from ..gateways import discover_gateways, gateway_enabled
 from ..gateways.base import store_guard
@@ -575,6 +575,8 @@ def _sse_for(ev) -> str:
         return _sse("tool", {"name": ev.name, "args": _jsonable(ev.args)})
     if isinstance(ev, ToolResult):
         return _sse("tool_result", {"name": ev.name, "result": str(ev.content)})
+    if isinstance(ev, Continue):
+        return _sse("continue", {"iteration": ev.iteration})
     if isinstance(ev, Done):
         return _sse("done", {"output": _jsonable(ev.result.output)})
     return _sse("text", {"text": str(ev)})

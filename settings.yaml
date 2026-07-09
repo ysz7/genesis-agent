@@ -236,8 +236,18 @@ prompt_caching: true
 # in the console. It's a scratchpad, not enforced control flow. ON by default
 # (cheap, recommended for agentic multi-step verticals); set enabled: false for
 # simple one-shot Q&A.
+#
+# autoloop (default off) turns the checklist into a soft control loop: after a
+# pass whose plan still has open steps, the agent is re-entered with a "continue
+# with the plan" nudge until every step is done or max_iterations passes is hit.
+# A shared usage budget spans the passes, so usage_limits bounds the whole loop.
+# Off by default (autonomy risk) — a deliberate opt-in for autonomous/batch
+# verticals; interactive use rarely wants it. Only affects the CLI + server SSE
+# stream path.
 planning:
   enabled: true
+  autoloop: false
+  max_iterations: 8
 
 # ── Verify / self-critique (optional) ───────────────────────────────────────────
 # Before finalizing, a strict evaluator (a separate, fresh-context model call —
