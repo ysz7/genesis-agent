@@ -33,6 +33,7 @@ from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import prompt_text
 from ..engine.registry import tool_names
 from ..engine.runner import Done, Reason, Think, ToolCall, ToolResult, iter_events
+from ..engine.verify import verification_enabled, verify_and_revise
 
 EMERALD = "#15c17c"
 console = Console()
@@ -183,6 +184,20 @@ async def run_streamed(
                     status.start()
                 elif isinstance(ev, Done):
                     result = ev.result
+            # Verify / self-critique (Phase 31, opt-in): judge the answer and
+            # revise once if it falls short — inside the agent context so any
+            # re-run reuses the same (MCP) session.
+            if result is not None and verification_enabled(deps.config.settings):
+                status.update(f"[{EMERALD}]verifying…")
+
+                def _note(weakest: str) -> None:
+                    status.stop()
+                    _verify_line(weakest, step)
+                    status.start()
+
+                result = await verify_and_revise(
+                    agent, task, deps, result, notify=_note
+                )
     except Exception as exc:
         elapsed = time.monotonic() - start
         append_run(deps, task_text, elapsed, 0, ok=False, error=str(exc))
@@ -225,6 +240,17 @@ def _think(text: str, step: dict) -> None:
     if len(first) > 88:
         first = first[:87] + "…"
     console.print(f"  [dim]{_prefix(step)}[/] [dim italic]THINK[/]   [dim]{_esc(first)}[/]")
+
+
+def _verify_line(weakest: str, step: dict) -> None:
+    """Self-critique triggered a revision (Phase 31): show what's being fixed."""
+    weakest = weakest.strip() or "the answer"
+    if len(weakest) > 80:
+        weakest = weakest[:79] + "…"
+    console.print(
+        f"  [yellow]{_prefix(step)}[/] [bold yellow]VERIFY[/]  "
+        f"[dim]revising: {_esc(weakest)}[/]"
+    )
 
 
 def _tool_line(name: str, args: Any, result: Any, step: dict) -> None:

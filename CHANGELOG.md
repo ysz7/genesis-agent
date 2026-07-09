@@ -11,6 +11,24 @@ syncing, since some releases change defaults.
 ## [Unreleased]
 
 ### Added
+- **Verify / self-critique loop (Phase 31)** — an optional evaluator–optimizer
+  pass: before finalizing, a **strict evaluator** (a separate, fresh-context
+  `pydantic_ai.direct.model_request` — NOT the agent grading its own work
+  in-context) judges the answer against the task and, on a fail verdict, the run
+  is repeated once with the evaluator's `weakest` + `gaps` fed back ("fix the
+  weakest point first"), capped at `max_rounds`. Deliberately avoids the raw
+  community-loop anti-patterns: no in-context self-scoring, no magic 8/10
+  threshold (structural `ok` + a hard iteration cap), and the evaluation runs off
+  to the side (no PLAN/DO/VERIFY ceremony bloating history). A scope guard skips
+  trivial one-shot answers (short output, no tool calls) so small tasks stay
+  small, and structured output is left untouched. Fail-open — a flaky/unparseable
+  verdict never blocks the answer. Usage stays honest: first-run, every evaluator
+  call, and every re-run fold into the returned result's usage. New
+  `engine/verify.py`; wired into **all** run sites (CLI one-shot + REPL, server
+  SSE + non-stream, gateways, scheduler, menu). Console shows a yellow
+  `VERIFY · revising: <weakest>` line when a revision fires. Settings
+  `verify: {enabled: false, max_rounds: 1, model?, min_output_chars: 400}`, off by
+  default (costs an extra call; recommended for research/codegen verticals).
 - **Context editing — stale tool-result pruning (Phase 30)** — a cheaper history
   pass that runs *before* compaction, off the same ~60%-of-`context_budget`
   trigger: it replaces the **body** of large, stale `ToolReturnPart`s (run_shell /

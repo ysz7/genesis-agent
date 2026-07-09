@@ -34,7 +34,7 @@ KNOWN_SETTINGS_KEYS = frozenset({
     "name", "store", "workspace", "render_markdown", "history_keep", "threads",
     "context_budget", "compaction", "context_editing", "max_tool_output", "limits", "retries",
     "model_settings", "model_fallbacks", "thinking", "sandbox", "tools", "redact_secrets",
-    "guardrails", "serve_timeout", "prompt_caching", "attachments", "planning",
+    "guardrails", "serve_timeout", "prompt_caching", "attachments", "planning", "verify",
     "scheduler", "subagents", "self_improvement", "memory_recall",
     "generated_tools", "approvals", "memory", "mcp", "gateways",
     "log_runs", "log_transcripts", "transcripts_keep",

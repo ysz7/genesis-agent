@@ -232,6 +232,24 @@ prompt_caching: true
 planning:
   enabled: true
 
+# ── Verify / self-critique (optional) ───────────────────────────────────────────
+# Before finalizing, a strict evaluator (a separate, fresh-context model call —
+# NOT the agent grading its own work in-context) judges the answer against the
+# task and, if it falls short, the run is repeated once with the evaluator's
+# feedback ("fix the weakest point first"). The single most reliable quality lift
+# on research/codegen tasks. OFF by default (costs one extra call). Trivial
+# one-shot answers (short, no tool calls) are skipped so small tasks stay small.
+#   max_rounds : revisions allowed after the first answer (0 disables). Default 1.
+#   model      : optional cheaper evaluator id (same provider/key) — a small model
+#                is usually enough to spot gaps. Unset = the agent's own model.
+#   min_output_chars : answers shorter than this (with no tool calls) skip
+#                      verification. Default 400.
+# verify:
+#   enabled: true
+#   max_rounds: 1
+#   # model: gpt-4.1-mini
+#   # min_output_chars: 400
+
 # ── Scheduling (recurring tasks, optional) ───────────────────────────────────────
 # Lets the agent schedule recurring tasks from a chat — `schedule_task`,
 # `list_scheduled`, `cancel_scheduled`, `edit_scheduled` (e.g. "summarize HN every

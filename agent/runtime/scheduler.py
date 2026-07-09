@@ -288,6 +288,9 @@ async def run_due_jobs(
         start = time.monotonic()
         try:
             result = await agent.run(job["task"], deps=deps, usage_limits=usage_limits)
+            from ..engine.verify import verify_and_revise
+
+            result = await verify_and_revise(agent, job["task"], deps, result)
             text = _result_text(result)
         except Exception as exc:  # noqa: BLE001 - a bad task must not kill the ticker
             logger.warning("scheduled task %s failed: %s", job.get("id"), exc)

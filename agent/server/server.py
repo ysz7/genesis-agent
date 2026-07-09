@@ -54,6 +54,7 @@ from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, v
 from ..engine.factory import build_agent
 from ..engine import guardrails
 from ..engine.runner import Done, Reason, Think, ToolCall, ToolResult, iter_events
+from ..engine.verify import run_then_verify, verify_and_revise
 from ..gateways import discover_gateways, gateway_enabled
 from ..gateways.base import store_guard
 from ..runtime import scheduler
@@ -378,9 +379,8 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             # deliver (client closed the tab) must not mislabel a task that ran
             # fine, nor trigger a second send onto a dead socket.
             try:
-                result = _submit(agent.run(
-                    task, deps=deps, message_history=history or None,
-                    usage_limits=config.usage_limits,
+                result = _submit(run_then_verify(
+                    agent, task, deps, message_history=history or None,
                 ))
             except (asyncio.TimeoutError, TimeoutError):
                 elapsed = time.monotonic() - start
@@ -431,9 +431,15 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             async def _produce():
                 async def _drive():
                     async for ev in iter_events(agent, task, deps):
-                        q.put(("frame", _sse_for(ev)))
                         if isinstance(ev, Done):
-                            q.put(("done", ev.result))
+                            # Self-critique (Phase 31) runs after the streamed
+                            # pass; the final `done` frame carries the verified
+                            # (possibly revised) output.
+                            final = await verify_and_revise(agent, task, deps, ev.result)
+                            q.put(("frame", _sse_for(Done(final))))
+                            q.put(("done", final))
+                        else:
+                            q.put(("frame", _sse_for(ev)))
                 try:
                     await asyncio.wait_for(_drive(), timeout=serve_timeout)
                 except (asyncio.TimeoutError, TimeoutError):

@@ -735,7 +735,10 @@ def _run_job(agent, deps, job: dict) -> None:
 
     async def _run():
         async with agent:                  # starts/stops MCP servers if any
-            return await agent.run(task, deps=deps, usage_limits=deps.config.usage_limits)
+            result = await agent.run(task, deps=deps, usage_limits=deps.config.usage_limits)
+            from ..engine.verify import verify_and_revise
+
+            return await verify_and_revise(agent, task, deps, result)
 
     try:
         result = asyncio.run(_run())

@@ -257,6 +257,9 @@ class Pipeline:
                 message_history=history or None,
                 usage_limits=self.usage_limits,
             )
+            from ..engine.verify import verify_and_revise
+
+            result = await verify_and_revise(self.agent, prompt, self.deps, result)
             self.last_tokens = _tokens(result)
             threads.save_thread(self.deps.store, session, result.all_messages(), keep=self.keep)
             return _as_text(result.output)

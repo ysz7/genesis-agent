@@ -180,7 +180,10 @@ def _force_due(store, job_id):
 
 
 def _fake_deps(tmp_path):
-    return SimpleNamespace(settings={}, workspace=tmp_path, secrets={})
+    # `.config` mirrors the real AgentDeps shape (verify_and_revise reads
+    # deps.config.settings); empty settings keep verification off.
+    cfg = SimpleNamespace(settings={}, usage_limits=None)
+    return SimpleNamespace(settings={}, workspace=tmp_path, secrets={}, config=cfg)
 
 
 def test_run_due_jobs_fires_bumps_enqueues(tmp_path):
