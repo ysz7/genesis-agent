@@ -47,8 +47,8 @@ history_keep: 40
 #   server: POST {"task": ..., "session": "<id>"} loads + saves that thread;
 #           without a session the server stays stateless.
 # Capped to history_keep messages so a thread stays lean on disk.
-# threads:
-#   enabled: true
+threads:
+  enabled: true
 
 # Your model's usable context window, in tokens — auto-compaction triggers at
 # ~60% of this (older history is summarized, not truncated, so early facts
@@ -102,10 +102,10 @@ retries: 2
 #   tool-driven / deterministic verticals : temperature 0
 #   creative writing verticals            : temperature 0.7+
 # max_tokens caps the model's reply length; timeout is per request (seconds).
-# model_settings:
-#   temperature: 0
-#   max_tokens: 2048
-#   timeout: 60
+model_settings:
+  temperature: 0
+  # max_tokens: 2048
+  timeout: 60
 
 # Model fallback (optional). A list of backup model ids on the SAME provider/key:
 # if the primary model fails for a transient reason (HTTP error, rate-limit,
@@ -167,14 +167,19 @@ tools:
 #   long research endpoints : 600+
 # serve_timeout: 300
 
+# ── Observability (optional) ──────────────────────────────────────────────────────
+# Append one JSON line per finished run (CLI / server / gateway) to
+# workspace/runs.jsonl — task, model, token usage, tool calls, duration. Cheap,
+# and the simplest way to see real token spend over time. Default: false.
+log_runs: true
+
 # ── Prompt caching (optional) ─────────────────────────────────────────────────────
 # Reuse the provider's prompt cache for the static prefix to cut cost/latency on
 # repeated runs. Anthropic: caches the (static) tool definitions — the footer
 # shows "N cached" when a run reads from cache. OpenAI caches automatically;
 # other providers: no-op. Instructions aren't cached (the dynamic datetime prompt
 # would prevent hits). Cache TTL is a few minutes, so it helps bursts/loops.
-# OFF by default.
-# prompt_caching: true
+prompt_caching: true
 
 # ── Multimodal input (optional) ──────────────────────────────────────────────────
 # Attach images/PDFs to a run: one-shot `--image PATH_OR_URL`, drag a file into

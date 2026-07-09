@@ -147,7 +147,7 @@ enable). Every `settings.yaml` key:
 | `redact_secrets` | scrub `.env` values from tool output + the final answer | ✅ on (code default `true`) |
 | `guardrails` | regex `input` / `output` `block` / `redact` | ⬜ off |
 | `serve_timeout` | per-task wall-clock for `--serve` (→ 504) | ✅ on (`300`) |
-| `prompt_caching` | reuse the provider's prompt cache | ⬜ off |
+| `prompt_caching` | reuse the provider's prompt cache | ✅ on |
 | `attachments` | image / PDF input (multimodal); `max_mb` caps size | ✅ on (cap `10`MB) |
 | `planning` | `update_plan` todo scratchpad | ✅ on |
 | `scheduler` | agent-scheduled recurring tasks + background ticker | ✅ on |
@@ -292,7 +292,7 @@ files with the same notes — this is just the consolidated reference.
 | `log_transcripts` | `false` | write the full per-run trace to `workspace/transcripts/<ts>-<id>.jsonl` |
 | `transcripts_keep` | `200` | oldest transcript files pruned past this count |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
-| `prompt_caching` | `false` | reuse the provider's prompt cache (Anthropic: tool defs) |
+| `prompt_caching` | `true` | reuse the provider's prompt cache (Anthropic: tool defs) |
 | `planning` | `enabled: true` | `update_plan` todo checklist, shown each turn ([§](#planning--delegation)) |
 | `subagents` | `enabled: true` | `delegate(task)` to isolated sub-agents; `max_depth` caps nesting ([§](#planning--delegation)) |
 | `self_improvement` | `enabled: true` | agent authors skills / tools / memory ([§](#self-improvement-optional)) |
