@@ -32,7 +32,7 @@ from ..runtime.runlog import append_run
 from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import prompt_text
 from ..engine.registry import tool_names
-from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
+from ..engine.runner import Done, Reason, Think, ToolCall, ToolResult, iter_events
 
 EMERALD = "#15c17c"
 console = Console()
@@ -164,7 +164,11 @@ async def run_streamed(
         # `iter_events` (shared with the server's SSE path) walks the run.
         async with agent:
             async for ev in iter_events(agent, task, deps, message_history=message_history):
-                if isinstance(ev, Reason):
+                if isinstance(ev, Think):
+                    status.stop()
+                    _think(ev.text, step)
+                    status.start()
+                elif isinstance(ev, Reason):
                     status.stop()
                     _reason(ev.text, step)
                     status.start()
@@ -213,6 +217,14 @@ def _reason(text: str, step: dict) -> None:
     if len(first) > 88:
         first = first[:87] + "…"
     console.print(f"  [{EMERALD}]{_prefix(step)}[/] [bold]REASON[/]  [dim]{_esc(first)}[/]")
+
+
+def _think(text: str, step: dict) -> None:
+    """Extended-thinking block (Phase 29): dim throughout, distinct from REASON."""
+    first = text.strip().split("\n", 1)[0].strip()
+    if len(first) > 88:
+        first = first[:87] + "…"
+    console.print(f"  [dim]{_prefix(step)}[/] [dim italic]THINK[/]   [dim]{_esc(first)}[/]")
 
 
 def _tool_line(name: str, args: Any, result: Any, step: dict) -> None:

@@ -33,7 +33,7 @@ logger = logging.getLogger("agent.config")
 KNOWN_SETTINGS_KEYS = frozenset({
     "name", "store", "workspace", "render_markdown", "history_keep", "threads",
     "context_budget", "compaction", "max_tool_output", "limits", "retries",
-    "model_settings", "model_fallbacks", "sandbox", "tools", "redact_secrets",
+    "model_settings", "model_fallbacks", "thinking", "sandbox", "tools", "redact_secrets",
     "guardrails", "serve_timeout", "prompt_caching", "attachments", "planning",
     "scheduler", "subagents", "self_improvement", "memory_recall",
     "generated_tools", "approvals", "memory", "mcp", "gateways",

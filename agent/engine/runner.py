@@ -24,9 +24,22 @@ from pydantic_ai.messages import (
     PartStartEvent,
     TextPart,
     TextPartDelta,
+    ThinkingPart,
+    ThinkingPartDelta,
 )
 
 from ..runtime.context import AgentDeps
+
+
+@dataclass
+class Think:
+    """A chunk of model *thinking* (extended reasoning) — Phase 29.
+
+    Emitted before :class:`Reason` when the model produces a thinking block. Kept
+    distinct so renderers can dim it (CLI) or tag it (SSE) apart from the answer,
+    and so it never gets mistaken for final output.
+    """
+    text: str
 
 
 @dataclass
@@ -74,16 +87,21 @@ async def iter_events(
         async for node in run:
             if Agent.is_model_request_node(node):
                 text = ""
+                thinking = ""
                 async with node.stream(run.ctx) as stream:
                     async for event in stream:
-                        if isinstance(event, PartStartEvent) and isinstance(
-                            event.part, TextPart
-                        ):
-                            text += event.part.content or ""
-                        elif isinstance(event, PartDeltaEvent) and isinstance(
-                            event.delta, TextPartDelta
-                        ):
-                            text += event.delta.content_delta or ""
+                        if isinstance(event, PartStartEvent):
+                            if isinstance(event.part, TextPart):
+                                text += event.part.content or ""
+                            elif isinstance(event.part, ThinkingPart):
+                                thinking += event.part.content or ""
+                        elif isinstance(event, PartDeltaEvent):
+                            if isinstance(event.delta, TextPartDelta):
+                                text += event.delta.content_delta or ""
+                            elif isinstance(event.delta, ThinkingPartDelta):
+                                thinking += event.delta.content_delta or ""
+                if thinking.strip():
+                    yield Think(thinking)
                 if text.strip():
                     yield Reason(text)
             elif Agent.is_call_tools_node(node):

@@ -115,6 +115,25 @@ model_settings:
 #   anthropic: model_fallbacks: [claude-sonnet-5]
 # model_fallbacks: []
 
+# Extended thinking / reasoning budget (optional). The single biggest quality
+# lever on hard tasks: let the model reason before answering. OFF by default
+# (costs extra tokens; not every model supports it). Thinking shows as a dim
+# THINK line in the console and an SSE `thinking` event on --serve, kept separate
+# from the answer.
+#   enabled      : turn it on. Default off.
+#   effort       : portable level — minimal | low | medium | high | xhigh. Works
+#                  on any reasoning-capable model (reasoning_effort is an alias).
+#   budget_tokens: Anthropic only — an exact thinking-token budget (overrides
+#                  effort for Anthropic). Needs a big enough model max_tokens.
+# Applies to anthropic + openai; openrouter/ollama/custom endpoints no-op with a
+# hint (set model_settings.thinking by hand if your model supports it). On
+# Anthropic, temperature/top_p above are auto-dropped (thinking requires them
+# unset). Reasoning-only models (o-series, etc.) may always think regardless.
+# thinking:
+#   enabled: true
+#   effort: high
+#   # budget_tokens: 4000   # Anthropic: precise control instead of effort
+
 # ── Sandbox & tools ─────────────────────────────────────────────────────────────
 # Control what the agent can touch.
 

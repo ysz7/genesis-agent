@@ -49,6 +49,7 @@ from pydantic_ai.messages import (
     ModelResponse,
     SystemPromptPart,
     TextPart,
+    ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
@@ -94,6 +95,8 @@ def _render(messages: list[ModelMessage]) -> str:
         for p in m.parts:
             if isinstance(p, SystemPromptPart):
                 continue  # persona is re-attached verbatim, not summarized
+            if isinstance(p, ThinkingPart):
+                continue  # thinking blocks (Phase 29) are transient — don't re-bill them
             text = _part_text(p).strip()
             if not text:
                 continue

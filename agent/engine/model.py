@@ -8,6 +8,8 @@ supporting it — every tool, the console, and the server are provider-agnostic.
 
 from __future__ import annotations
 
+import logging
+
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -15,6 +17,8 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from ..runtime.config import Config
+
+logger = logging.getLogger("agent.model")
 
 
 def build_model(config: Config) -> Model:
@@ -79,4 +83,43 @@ def cache_model_settings(config: Config) -> dict:
         return {}
     if config.provider == "anthropic":
         return {"anthropic_cache_tool_definitions": True}
+    return {}
+
+
+def thinking_model_settings(config: Config) -> dict:
+    """Extended-thinking / reasoning-budget model settings (empty unless enabled).
+
+    Opt-in via ``thinking: {enabled: true, effort: high, budget_tokens: N}`` in
+    ``settings.yaml`` (off by default; inert without the block — same lean-by-
+    default posture as caching/MCP). ``effort`` (``minimal|low|medium|high|xhigh``,
+    with ``reasoning_effort`` accepted as an alias) maps to Pydantic AI's
+    provider-agnostic ``thinking`` ``ModelSettings`` key, so it works on any
+    reasoning-capable model. For Anthropic, an optional ``budget_tokens`` uses the
+    provider-specific ``anthropic_thinking`` for exact token control.
+
+    Active for ``anthropic`` and ``openai`` (the providers with a portable
+    reasoning knob here). ``openrouter``/``ollama``/custom endpoints degrade to a
+    no-op with a one-line hint — reasoning there is model-specific, so a vertical
+    sets ``model_settings.thinking`` by hand rather than risk an API error.
+    """
+    block = config.settings.get("thinking")
+    block = block if isinstance(block, dict) else {}
+    if not block.get("enabled"):
+        return {}
+
+    effort = block.get("effort") or block.get("reasoning_effort")
+    budget = block.get("budget_tokens")
+
+    if config.provider == "anthropic":
+        if budget:
+            return {"anthropic_thinking": {"type": "enabled", "budget_tokens": int(budget)}}
+        return {"thinking": str(effort) if effort else True}
+    if config.provider == "openai":
+        return {"thinking": str(effort) if effort else True}
+
+    logger.info(
+        "thinking is enabled but provider %r has no portable reasoning knob here — "
+        "no-op (set model_settings.thinking by hand if your model supports it)",
+        config.provider,
+    )
     return {}

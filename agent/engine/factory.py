@@ -20,7 +20,7 @@ from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from .compaction import build_history_processor
 from .mcp import load_mcp_servers
-from .model import build_model, cache_model_settings
+from .model import build_model, cache_model_settings, thinking_model_settings
 from .registry import discover_tools
 
 logger = logging.getLogger("agent.obs")
@@ -90,8 +90,19 @@ def build_agent(
         kwargs["output_type"] = output_type
     # Model knobs (temperature, max_tokens, timeout, …) passed through as-is so
     # new Pydantic AI ModelSettings keys work without changing the template,
-    # merged with any provider prompt-caching settings (Phase 16, opt-in).
+    # merged with any provider prompt-caching settings (Phase 16, opt-in) and the
+    # extended-thinking / reasoning-budget knob (Phase 29, opt-in).
     model_settings = {**(config.model_settings or {}), **cache_model_settings(config)}
+    thinking = thinking_model_settings(config)
+    if thinking:
+        model_settings.update(thinking)
+        # Anthropic extended thinking rejects a fixed temperature/top_p (it needs
+        # them unset, =1). The template ships temperature: 0, so drop the conflict
+        # rather than let enabling thinking error the run.
+        if config.provider == "anthropic":
+            for knob in ("temperature", "top_p"):
+                if model_settings.pop(knob, None) is not None:
+                    logger.info("thinking on Anthropic: dropped %s (must be unset)", knob)
     if model_settings:
         kwargs["model_settings"] = model_settings
 

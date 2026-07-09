@@ -53,7 +53,7 @@ from ..runtime.transcripts import write_transcript
 from ..runtime.attachments import build_user_prompt, max_mb_from, prompt_text, vision_hint
 from ..engine.factory import build_agent
 from ..engine import guardrails
-from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
+from ..engine.runner import Done, Reason, Think, ToolCall, ToolResult, iter_events
 from ..gateways import discover_gateways, gateway_enabled
 from ..gateways.base import store_guard
 from ..runtime import scheduler
@@ -561,6 +561,8 @@ def _sse(event: str, data: dict) -> str:
 
 def _sse_for(ev) -> str:
     """Map a runner event to its SSE frame."""
+    if isinstance(ev, Think):
+        return _sse("thinking", {"text": ev.text})
     if isinstance(ev, Reason):
         return _sse("text", {"text": ev.text})
     if isinstance(ev, ToolCall):

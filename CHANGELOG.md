@@ -10,6 +10,22 @@ syncing, since some releases change defaults.
 
 ## [Unreleased]
 
+### Added
+- **Extended thinking / reasoning budget (Phase 29)** — a per-agent, opt-in
+  `thinking:` block in `settings.yaml` exposes model reasoning as a first-class
+  knob (the biggest quality lever on hard tasks). `effort:` (`minimal…xhigh`,
+  with `reasoning_effort` as an alias) maps to Pydantic AI's portable `thinking`
+  model-setting; Anthropic gains an optional `budget_tokens:` for exact control.
+  Off by default and inert without the block (same lean-by-default posture as
+  caching/MCP); active on `anthropic`/`openai`, a no-op-with-hint elsewhere. The
+  seam lives in `model.py` (`thinking_model_settings`), merged in `build_agent`
+  next to prompt-caching. On Anthropic, `temperature`/`top_p` are auto-dropped
+  when thinking is on (the API requires them unset), so enabling it just works on
+  the shipped `temperature: 0` template. Thinking renders as a distinct dim
+  `THINK` line in the console tree (separate from `REASON`) and an SSE `thinking`
+  event on `--serve`; thinking blocks are excluded from compaction summaries so
+  chain-of-thought isn't re-billed, while still counting toward the usage limits.
+
 ### Changed
 - **Default persona gains a "deliverables discipline" rule** — `persona.md` now
   carries a general (task-agnostic) section that keeps the agent from turning a
