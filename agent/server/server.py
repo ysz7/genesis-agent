@@ -405,7 +405,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             write_transcript(deps, task_text, result=result, duration=elapsed, ok=True)
             if use_thread:                   # persist the updated conversation
                 keep = int(config.settings.get("history_keep", 40))
-                threads.save_thread(deps.store, session, result.all_messages(), keep=keep)
+                threads.save_thread(
+                    deps.store, session, result.all_messages(), keep=keep, channel="server"
+                )
             self._send(200, {"output": _jsonable(result.output)})
 
         def _handle_stream(self, task: str) -> None:

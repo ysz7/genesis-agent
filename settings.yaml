@@ -47,6 +47,9 @@ history_keep: 40
 #   server: POST {"task": ..., "session": "<id>"} loads + saves that thread;
 #           without a session the server stays stateless.
 # Capped to history_keep messages so a thread stays lean on disk.
+# Each saved thread also records lightweight metadata (last-used time, channel,
+# message count) for the cross-channel session browser. Use a SQLite `store` (the
+# template default) when CLI and gateways write concurrently.
 threads:
   enabled: true
 

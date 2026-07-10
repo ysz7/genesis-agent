@@ -71,6 +71,62 @@ def test_list_and_clear(tmp_path):
     store.close()
 
 
+# ── Phase 36: thread metadata + legacy migration ─────────────────────────────
+
+def test_save_thread_writes_and_updates_meta(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "work", _msgs(), channel="cli")
+    meta = threads.thread_meta(store)["work"]
+    assert meta["channel"] == "cli"
+    assert meta["msg_count"] == 2
+    assert meta["title"] == ""                    # title is filled by Phase 37
+    first_stamp = meta["updated_at"]
+    assert first_stamp is not None
+
+    # A later save advances updated_at and tracks the (capped) message count.
+    long = [ModelRequest(parts=[UserPromptPart(content=f"m{i}")]) for i in range(6)]
+    threads.save_thread(store, "work", long, keep=4, channel="cli")
+    meta2 = threads.thread_meta(store)["work"]
+    assert meta2["msg_count"] == 4                 # keep-trimmed count is recorded
+    assert meta2["updated_at"] >= first_stamp
+    store.close()
+
+
+def test_meta_records_channel_per_writer(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "telegram:42", _msgs(), channel="telegram")
+    threads.save_thread(store, "s", _msgs())      # no channel given
+    meta = threads.thread_meta(store)
+    assert meta["telegram:42"]["channel"] == "telegram"
+    assert meta["s"]["channel"] == ""             # absent channel → empty, not a crash
+    store.close()
+
+
+def test_legacy_flat_index_migrates_on_first_read(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    # Simulate a pre-Phase-36 store: a flat index with no meta map.
+    store.set("threads:index", ["old-a", "old-b"])
+    meta = threads.thread_meta(store)             # first read migrates
+    assert set(meta) == {"old-a", "old-b"}
+    assert meta["old-a"] == {
+        "title": "", "updated_at": None, "channel": "", "msg_count": 0
+    }
+    # Persisted + idempotent: the raw store now holds meta, second read is stable.
+    assert set(store.get("threads:meta")) == {"old-a", "old-b"}
+    assert threads.thread_meta(store) == meta
+    store.close()
+
+
+def test_clear_thread_removes_meta(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "a", _msgs(), channel="cli")
+    threads.save_thread(store, "b", _msgs(), channel="cli")
+    threads.clear_thread(store, "a")
+    assert "a" not in threads.thread_meta(store)
+    assert "b" in threads.thread_meta(store)
+    store.close()
+
+
 # ── End-to-end: server session ───────────────────────────────────────────────
 
 def _free_port() -> int:

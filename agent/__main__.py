@@ -377,7 +377,7 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
             if len(history) > keep:
                 del history[:-keep]
             if session:                       # persist the thread (Phase 18)
-                threads.save_thread(deps.store, session, history, keep=keep)
+                threads.save_thread(deps.store, session, history, keep=keep, channel="cli")
             # A tool the agent authored + got approved this turn → hot-reload so
             # it's callable immediately (Phase 11b).
             if deps.extra.pop("reload_pending", False):

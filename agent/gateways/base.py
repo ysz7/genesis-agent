@@ -261,7 +261,10 @@ class Pipeline:
 
             result = await verify_and_revise(self.agent, prompt, self.deps, result)
             self.last_tokens = _tokens(result)
-            threads.save_thread(self.deps.store, session, result.all_messages(), keep=self.keep)
+            threads.save_thread(
+                self.deps.store, session, result.all_messages(),
+                keep=self.keep, channel=self.name,
+            )
             return _as_text(result.output)
         except Exception as exc:  # noqa: BLE001 - the caller decides how to surface this
             ok = False
