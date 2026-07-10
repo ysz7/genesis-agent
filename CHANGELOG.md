@@ -8,9 +8,60 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.4.0] — 2026-07-10
 
 ### Added
+- **Thread metadata & legacy migration (Phase 36)** — persisted threads now carry
+  a `threads:meta` map (`{id: {title, updated_at, channel, msg_count}}`), written
+  in one place inside `threads.save_thread` so every writer (REPL, server,
+  Telegram, WhatsApp) populates it uniformly — no per-channel code. `updated_at`
+  (UTC) and `msg_count` refresh on each save, `channel` is recorded from the call
+  site (`cli` / a gateway name / `server`), and `title` is left empty for Phase 37.
+  A new `thread_meta(store)` accessor lazily migrates pre-Phase-36 threads that
+  live only in the flat `threads:index` into the meta map on first read
+  (idempotent, never a crash), and `clear_thread` now drops the meta entry too.
+  The enabling foundation for the cross-channel session browser; recommend a
+  SQLite `store` (the template default) when CLI and gateways write concurrently.
+- **Todo-driven autonomous continuation (Phase 35)** — an opt-in
+  `planning: {autoloop: true, max_iterations: 8}` turns the todo scratchpad from a
+  passive display into a soft control loop: after a pass whose plan still has open
+  steps, the shared event walk (`engine/runner.py`) re-enters the agent with a
+  "continue with the plan" nudge and the prior history until every step is `done`
+  or the cap is hit. Guardrailed against runaway — a hard `max_iterations` pass
+  cap, one shared `RunUsage` so the existing `usage_limits` bounds the *whole*
+  loop (not each pass), and an early exit the moment the plan clears. Lives in the
+  streaming path (CLI + server SSE) and emits a `Continue` event rendered as a dim
+  `CONTINUE` line / an SSE `continue` frame. Off by default (autonomy risk — a
+  deliberate vertical opt-in); composes with verify (Phase 31). New
+  `engine/autoloop.py`.
+- **Incremental prompt caching over the history prefix (Phase 34)** — prompt
+  caching (previously tool-definitions only) can now also cache the growing
+  conversation **prefix**, so multi-turn REPL / loop / gateway sessions pay for
+  the settled persona + history once. `prompt_caching` gains an object form
+  `{tools: true, prefix: true}` (bare `true` stays tools-only, fully
+  back-compatible); `prefix` maps to Anthropic's `anthropic_cache`, an automatic
+  breakpoint that moves forward as the chat grows and self-trims to the 4-slot
+  limit. `tools` defaults on in the object form, so enabling `prefix` never
+  silently drops tool-defs caching. OpenAI auto-caches / other providers no-op, as
+  before; the seam stays in `model.py` (`cache_model_settings`).
+- **Parallel subagent fan-out (Phase 33)** — two concurrent delegation tools for
+  independent subtasks: `delegate_many(tasks)` (unnamed, parent's persona) and
+  `delegate_to_many(name, tasks)` (one named specialist over a batch). Both run
+  under `asyncio.gather` with answers returned in input order, capped by
+  `subagents.max_parallel` (default 4). A failed child yields an error string in
+  its own slot without sinking its siblings, and the depth guard / `_base_exclude`
+  fork-bomb protection is unchanged. Budget parity with `delegate`: each child
+  carries the per-run `usage_limits` and folds its usage back into the parent.
+- **Paginated tool outputs (Phase 32)** — `read_file` / `fetch_url` / `run_shell`
+  no longer silently truncate at the `max_tool_output` cliff. `read_file` gains
+  line-based `offset` / `limit` (and, with no `limit`, still windows a large file
+  to the char cap) and appends a `…(showing lines a-b of N; call again with
+  offset=b)` footer; `fetch_url` gains a char-window `offset` with the same footer
+  and an out-of-range guard; `run_shell` keeps the head and notes
+  `[output capped: showing first N of M chars …]` with how to narrow the command.
+  The `max_tool_output` cap is now the per-call *window*, not a guillotine —
+  defaults reproduce prior behaviour minus the silent loss. Shared `_window_note`
+  helper.
 - **Verify / self-critique loop (Phase 31)** — an optional evaluator–optimizer
   pass: before finalizing, a **strict evaluator** (a separate, fresh-context
   `pydantic_ai.direct.model_request` — NOT the agent grading its own work
