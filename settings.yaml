@@ -50,8 +50,15 @@ history_keep: 40
 # Each saved thread also records lightweight metadata (last-used time, channel,
 # message count) for the cross-channel session browser. Use a SQLite `store` (the
 # template default) when CLI and gateways write concurrently.
+#
+# autotitle: a short, context-derived title per session, generated once and
+# stored (the browser reads it instantly).
+#   cheap (default): one tiny model side-call from the first message, folded
+#                    into usage — the Claude-Code touch.
+#   off            : free fallback — the trimmed first user message, no call.
 threads:
   enabled: true
+  autotitle: cheap
 
 # Your model's usable context window, in tokens — auto-compaction triggers at
 # ~60% of this (older history is summarized, not truncated, so early facts

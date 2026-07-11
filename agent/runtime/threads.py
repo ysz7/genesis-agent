@@ -20,8 +20,15 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
-from pydantic_ai.messages import ModelMessagesTypeAdapter
+from pydantic_ai.direct import model_request
+from pydantic_ai.messages import (
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    TextPart,
+    UserPromptPart,
+)
 from pydantic_core import to_jsonable_python
 
 from .store import Store
@@ -31,6 +38,15 @@ logger = logging.getLogger("agent.threads")
 _PREFIX = "thread:"       # one blob per session: thread:<id>
 _INDEX = "threads:index"  # list of known session ids (for /threads)
 _META = "threads:meta"    # {id: {title, updated_at, channel, msg_count}} (Phase 36)
+
+# Auto-titling (Phase 37): one short, context-derived title per session.
+_TITLE_MAX_CHARS = 60     # a browser row, not a paragraph
+_TITLE_MAX_TOKENS = 24    # the side-call is deliberately tiny
+_TITLE_PROMPT = (
+    "Write a short, specific title for a conversation that starts with the "
+    "message below. Use 3-6 words, no quotes, no trailing punctuation, plain "
+    "text only. Reply with the title and nothing else.\n\nMESSAGE:\n"
+)
 
 
 def enabled(settings: dict) -> bool:
@@ -138,6 +154,112 @@ def load_thread(store: Store, session_id: str) -> list:
 def list_threads(store: Store) -> list[str]:
     """The session ids that have a saved thread (most-recently-added last)."""
     return list(store.get(_INDEX, []) or [])
+
+
+# ── Auto-titled threads (Phase 37) ───────────────────────────────────────────
+
+def _first_user_text(messages: list) -> str:
+    """The first user message's text (multimodal parts flattened to their text)."""
+    for m in messages:
+        for p in getattr(m, "parts", []):
+            if isinstance(p, UserPromptPart):
+                content = p.content
+                if isinstance(content, str):
+                    return content.strip()
+                # A multimodal prompt: keep only the text items, drop binary parts.
+                texts = [c for c in (content or []) if isinstance(c, str)]
+                return " ".join(texts).strip()
+    return ""
+
+
+def _clean_title(text: str) -> str:
+    """Normalize a raw title to a single trimmed line without wrapping quotes."""
+    line = (text or "").strip()
+    if not line:
+        return ""
+    line = line.splitlines()[0].strip().strip('"').strip("'").rstrip(".").strip()
+    return line[:_TITLE_MAX_CHARS].strip()
+
+
+def usage_of(result: Any) -> Any:
+    """Best-effort ``RunUsage`` from an ``AgentRunResult`` (property or method form).
+
+    A caller helper so title-call tokens can fold into the run's usage without
+    every entrypoint re-deriving the property-vs-method shape (see ``_tokens`` in
+    the server) — passed to :func:`autotitle_thread` as its ``usage`` accumulator.
+    """
+    try:
+        u = result.usage
+        return u if hasattr(u, "input_tokens") else u()
+    except Exception:  # noqa: BLE001 - usage is optional; never break titling
+        return None
+
+
+async def autotitle_thread(
+    store: Store,
+    session_id: str,
+    messages: list,
+    settings: dict,
+    *,
+    model: Any | None = None,
+    usage: Any | None = None,
+) -> str | None:
+    """Give *session_id* a short, human title once, if it's still untitled.
+
+    Two tiers, chosen by ``threads.autotitle`` so cost is opt-in (Phase 37):
+
+    - ``cheap`` (default) — a one-line title from a bounded
+      ``pydantic_ai.direct.model_request`` (the same side-call pattern as
+      compaction / verify), folding its tokens into *usage* when given.
+    - ``off`` — the free fallback: the trimmed first user message, **zero**
+      model calls.
+
+    Called right after :func:`save_thread` (which seeds the ``threads:meta`` entry
+    with an empty title). The title is **stored**, so a session pays for at most
+    one small call over its whole lifetime: once a title is set this returns
+    immediately without touching the model. When ``model`` is ``None`` the cheap
+    tier degrades to the trimmed-first-message fallback (same posture as caching /
+    MCP). A failed side-call never breaks the run — the fallback title stands.
+    Returns the title written, or ``None`` when nothing was titled.
+    """
+    if not enabled(settings):
+        return None
+    mode = str((settings.get("threads") or {}).get("autotitle", "cheap")).lower()
+    meta = store.get(_META, {}) or {}
+    entry = dict(meta.get(session_id) or {})
+    if entry.get("title"):
+        return None  # already titled once — stored, never regenerated
+    first = _first_user_text(messages)
+    if not first:
+        return None  # nothing to title on yet (no user message)
+
+    title = _clean_title(first)  # the free fallback, also the cheap tier's backstop
+    if mode != "off" and model is not None:
+        try:
+            response = await model_request(
+                model,
+                [ModelRequest(parts=[UserPromptPart(content=_TITLE_PROMPT + first[:2000])])],
+                model_settings={"max_tokens": _TITLE_MAX_TOKENS},
+            )
+            candidate = _clean_title(
+                "".join(p.content for p in response.parts if isinstance(p, TextPart))
+            )
+            if candidate:
+                title = candidate
+            if usage is not None:
+                try:  # the title call costs tokens — keep Phase 3 limits honest
+                    usage.incr(response.usage)
+                except Exception:  # noqa: BLE001 - usage accounting must never kill a run
+                    pass
+        except Exception as exc:  # noqa: BLE001 - titling must never break a run
+            logger.warning("could not auto-title thread %r: %s", session_id, exc)
+
+    if not title:
+        return None
+    entry["title"] = title
+    meta[session_id] = entry
+    store.set(_META, meta)
+    return title
 
 
 def clear_thread(store: Store, session_id: str) -> None:

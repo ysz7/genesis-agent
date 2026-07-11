@@ -378,6 +378,11 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
                 del history[:-keep]
             if session:                       # persist the thread (Phase 18)
                 threads.save_thread(deps.store, session, history, keep=keep, channel="cli")
+                # Auto-title the session once (Phase 37) — cheap side-call, stored.
+                asyncio.run(threads.autotitle_thread(
+                    deps.store, session, history, config.settings,
+                    model=agent.model, usage=threads.usage_of(result),
+                ))
             # A tool the agent authored + got approved this turn → hot-reload so
             # it's callable immediately (Phase 11b).
             if deps.extra.pop("reload_pending", False):

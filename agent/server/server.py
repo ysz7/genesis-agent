@@ -408,6 +408,11 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 threads.save_thread(
                     deps.store, session, result.all_messages(), keep=keep, channel="server"
                 )
+                # Auto-title the session once (Phase 37) — cheap side-call, stored.
+                _submit(threads.autotitle_thread(
+                    deps.store, session, result.all_messages(), config.settings,
+                    model=agent.model, usage=threads.usage_of(result),
+                ))
             self._send(200, {"output": _jsonable(result.output)})
 
         def _handle_stream(self, task: str) -> None:

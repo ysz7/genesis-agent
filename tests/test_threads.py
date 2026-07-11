@@ -5,6 +5,7 @@ end-to-end through the HTTP server's optional ``session`` (a FunctionModel that
 reports how many messages it was handed, so loaded history is observable).
 """
 
+import asyncio
 import socket
 
 import httpx
@@ -12,6 +13,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.messages import (
     ModelRequest, ModelResponse, UserPromptPart, TextPart,
 )
+from pydantic_ai.usage import RunUsage
 
 from agent.engine import factory
 from agent.runtime import threads
@@ -124,6 +126,100 @@ def test_clear_thread_removes_meta(tmp_path):
     threads.clear_thread(store, "a")
     assert "a" not in threads.thread_meta(store)
     assert "b" in threads.thread_meta(store)
+    store.close()
+
+
+# ── Phase 37: auto-titled threads ────────────────────────────────────────────
+
+def _title_model(calls: list, title: str = "Budget Trip to Japan") -> FunctionModel:
+    """A FunctionModel that records each call and returns a fixed title."""
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        calls.append(1)
+        return ModelResponse(parts=[TextPart(content=title)])
+    return FunctionModel(fn)
+
+
+def test_autotitle_cheap_generates_once_and_persists(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    calls: list = []
+    model = _title_model(calls)
+    settings = {"threads": {"enabled": True, "autotitle": "cheap"}}
+
+    threads.save_thread(store, "s", _msgs(), channel="cli")
+    title = asyncio.run(
+        threads.autotitle_thread(store, "s", _msgs(), settings, model=model)
+    )
+    assert title == "Budget Trip to Japan"
+    assert threads.thread_meta(store)["s"]["title"] == "Budget Trip to Japan"
+    assert len(calls) == 1                         # one small call for the title
+
+    # A second turn is already titled → no further model call, title unchanged.
+    title2 = asyncio.run(
+        threads.autotitle_thread(store, "s", _msgs(), settings, model=model)
+    )
+    assert title2 is None
+    assert len(calls) == 1                         # stored, not regenerated
+    assert threads.thread_meta(store)["s"]["title"] == "Budget Trip to Japan"
+    store.close()
+
+
+def test_autotitle_off_uses_first_message_and_makes_zero_model_calls(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    calls: list = []
+    model = _title_model(calls, title="SHOULD NOT BE USED")
+    settings = {"threads": {"enabled": True, "autotitle": "off"}}
+
+    threads.save_thread(store, "s", _msgs("ZZZ"), channel="cli")
+    title = asyncio.run(
+        threads.autotitle_thread(store, "s", _msgs("ZZZ"), settings, model=model)
+    )
+    assert title == "my secret is ZZZ"            # trimmed first user message
+    assert calls == []                             # free fallback: no model call
+    assert threads.thread_meta(store)["s"]["title"] == "my secret is ZZZ"
+    store.close()
+
+
+def test_autotitle_usage_folds_into_run(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    model = _title_model([], title="A Concise Title")
+    settings = {"threads": {"enabled": True, "autotitle": "cheap"}}
+    usage = RunUsage()
+
+    threads.save_thread(store, "s", _msgs(), channel="cli")
+    asyncio.run(
+        threads.autotitle_thread(store, "s", _msgs(), settings, model=model, usage=usage)
+    )
+    # The bounded title call bills real tokens into the run's accumulator.
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    store.close()
+
+
+def test_autotitle_cheap_degrades_without_a_model(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    settings = {"threads": {"enabled": True, "autotitle": "cheap"}}
+    threads.save_thread(store, "s", _msgs("ABC"), channel="cli")
+    # No model available → cheap tier degrades to the trimmed-first-message fallback.
+    title = asyncio.run(
+        threads.autotitle_thread(store, "s", _msgs("ABC"), settings, model=None)
+    )
+    assert title == "my secret is ABC"
+    store.close()
+
+
+def test_autotitle_noop_when_threads_off(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    calls: list = []
+    model = _title_model(calls)
+    threads.save_thread(store, "s", _msgs())
+    title = asyncio.run(
+        threads.autotitle_thread(
+            store, "s", _msgs(), {"threads": {"enabled": False}}, model=model
+        )
+    )
+    assert title is None
+    assert calls == []
+    assert threads.thread_meta(store)["s"]["title"] == ""   # untouched
     store.close()
 
 

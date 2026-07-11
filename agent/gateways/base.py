@@ -265,6 +265,11 @@ class Pipeline:
                 self.deps.store, session, result.all_messages(),
                 keep=self.keep, channel=self.name,
             )
+            # Auto-title the session once (Phase 37) — cheap side-call, stored.
+            await threads.autotitle_thread(
+                self.deps.store, session, result.all_messages(), self.settings,
+                model=getattr(self.agent, "model", None), usage=threads.usage_of(result),
+            )
             return _as_text(result.output)
         except Exception as exc:  # noqa: BLE001 - the caller decides how to surface this
             ok = False

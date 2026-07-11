@@ -8,6 +8,21 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [Unreleased]
+
+### Added
+- **Auto-titled threads (Phase 37)** — each persisted session now gets a short,
+  human, context-derived title, generated once and **stored** in `threads:meta`
+  (so the session browser is instant and a session pays for at most one small call
+  over its lifetime). Two tiers via `threads.autotitle`: `cheap` (default) writes
+  a one-line title from a bounded `pydantic_ai.direct.model_request` side-call —
+  the same pattern as compaction/verify, with its tokens folded into the run's
+  usage; `off` is a free fallback that trims the first user message with **zero**
+  model calls. Written next to `threads.save_thread` and invoked by every writer
+  (REPL, server, Telegram, WhatsApp); degrades to the fallback when no model is
+  available, and a failed side-call never breaks the run. Builds on Phase 36's
+  meta map; the readable input for the Phase 38/39 session browser.
+
 ## [1.4.0] — 2026-07-10
 
 ### Added
