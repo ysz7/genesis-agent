@@ -401,7 +401,7 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
                 return result
 
         try:
-            result = asyncio.run(_turn())
+            asyncio.run(_turn())            # renders the answer + persists inside _turn
             # A tool the agent authored + got approved this turn → hot-reload so
             # it's callable immediately (Phase 11b).
             if deps.extra.pop("reload_pending", False):
