@@ -223,6 +223,97 @@ def test_autotitle_noop_when_threads_off(tmp_path):
     store.close()
 
 
+# ── Phase 38: CLI session browser (the pure functions it renders) ────────────
+
+def _stamp(store, session_id, iso):
+    """Force a known updated_at so recency ordering is deterministic in tests."""
+    meta = store.get("threads:meta")
+    meta[session_id]["updated_at"] = iso
+    store.set("threads:meta", meta)
+
+
+def test_sessions_by_recency_newest_first_across_channels(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "a", _msgs(), channel="cli")
+    threads.save_thread(store, "b", _msgs(), channel="telegram")
+    threads.save_thread(store, "c", _msgs(), channel="server")
+    _stamp(store, "a", "2026-07-01T10:00:00+00:00")
+    _stamp(store, "b", "2026-07-03T10:00:00+00:00")
+    _stamp(store, "c", "2026-07-02T10:00:00+00:00")
+
+    rows = threads.sessions_by_recency(store)
+    assert [r["id"] for r in rows] == ["b", "c", "a"]           # newest first
+    assert [r["channel"] for r in rows] == ["telegram", "server", "cli"]  # all channels
+    assert threads.most_recent_session(store) == "b"
+    store.close()
+
+
+def test_most_recent_session_none_when_empty(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    assert threads.most_recent_session(store) is None
+    assert threads.sessions_by_recency(store) == []
+    store.close()
+
+
+def test_sessions_by_recency_lists_legacy_threads_last(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "new", _msgs(), channel="cli")
+    # A pre-Phase-36 id that lives only in the flat index (no timestamp).
+    store.set("threads:index", (store.get("threads:index") or []) + ["legacy"])
+    ids = [r["id"] for r in threads.sessions_by_recency(store)]
+    assert ids[0] == "new"        # timestamped session first
+    assert ids[-1] == "legacy"    # migrated in, but no updated_at → sorts last
+    store.close()
+
+
+def test_resume_target_picks_most_recent_and_falls_back(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    on = {"threads": {"enabled": True}}
+    # No sessions yet → fresh REPL (None).
+    assert threads.resume_target(store, on) is None
+    threads.save_thread(store, "a", _msgs(), channel="cli")
+    threads.save_thread(store, "b", _msgs(), channel="cli")
+    _stamp(store, "a", "2026-07-01T10:00:00+00:00")
+    _stamp(store, "b", "2026-07-05T10:00:00+00:00")
+    assert threads.resume_target(store, on) == "b"                 # resumes newest
+    assert threads.resume_target(store, on, "a") == "a"           # explicit id wins
+    # Threads off → always a fresh REPL, even with sessions on disk.
+    assert threads.resume_target(store, {"threads": {"enabled": False}}) is None
+    store.close()
+
+
+def test_rename_thread_sets_title(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "a", _msgs(), channel="cli")
+    threads.rename_thread(store, "a", "  Weekend Trip Plan  ")
+    assert threads.thread_meta(store)["a"]["title"] == "Weekend Trip Plan"  # trimmed
+    store.close()
+
+
+def test_delete_drops_session_from_browser_list(tmp_path):
+    store = open_store(tmp_path / "state.json")
+    threads.save_thread(store, "a", _msgs(), channel="cli")
+    threads.save_thread(store, "b", _msgs(), channel="cli")
+    threads.clear_thread(store, "a")
+    assert [r["id"] for r in threads.sessions_by_recency(store)] == ["b"]
+    store.close()
+
+
+def test_relative_time_formatting():
+    from datetime import datetime, timedelta, timezone
+
+    from agent.console import display
+
+    now = datetime.now(timezone.utc)
+    assert display.relative_time(None) == "—"
+    assert display.relative_time("not-a-date") == "—"
+    assert display.relative_time((now - timedelta(seconds=5)).isoformat()) == "just now"
+    assert display.relative_time((now - timedelta(minutes=7)).isoformat()) == "7m ago"
+    assert display.relative_time((now - timedelta(hours=3)).isoformat()) == "3h ago"
+    assert display.relative_time((now - timedelta(days=2)).isoformat()) == "2d ago"
+    assert display.relative_time((now - timedelta(days=20)).isoformat()) == "2w ago"
+
+
 # ── End-to-end: server session ───────────────────────────────────────────────
 
 def _free_port() -> int:

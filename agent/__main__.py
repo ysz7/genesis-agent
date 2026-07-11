@@ -302,11 +302,17 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
             if not threads_on:
                 display.info("threads are off — set threads.enabled: true in settings.yaml")
             else:
-                ids = threads.list_threads(deps.store)
-                cur = f"  (current: {session})" if session else ""
-                display.info(("saved threads: " + ", ".join(ids)) if ids else "no saved threads yet")
-                if cur:
-                    display.info(f"current thread: {session}")
+                rows = threads.sessions_by_recency(deps.store)
+                if not rows:
+                    display.info("no saved threads yet")
+                else:
+                    for r in rows:
+                        marker = "* " if r["id"] == session else "  "
+                        title = r.get("title") or "(untitled)"
+                        when = display.relative_time(r.get("updated_at"))
+                        display.info(f"{marker}{r['id']}  ·  {title}  ·  {when}  ·  {r.get('channel') or '—'}")
+                    if session:
+                        display.info(f"current thread: {session}")
             continue
         if task.startswith("/resume"):
             if not threads_on:

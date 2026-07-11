@@ -11,6 +11,18 @@ syncing, since some releases change defaults.
 ## [Unreleased]
 
 ### Added
+- **CLI session browser (Phase 38)** — the interactive menu becomes a real session
+  browser when threads are on. **Chat with the agent** now resumes the
+  most-recently-used session (continue where you left off) instead of always
+  starting fresh; with none saved yet, or threads off, it falls back to today's
+  fresh REPL. A new **Sessions** item (directly below Chat, hidden when threads are
+  off) lists every saved session across **all** channels — `title · <relative
+  last-used> · channel`, newest first — with New chat, and per-session Resume /
+  Rename / Delete. In-REPL parity: `/threads` now prints the same title +
+  last-used table instead of raw ids. New `threads.sessions_by_recency` /
+  `most_recent_session` / `resume_target` / `rename_thread` helpers and a
+  `display.relative_time` formatter back it; the underlying data is Phase 36's meta
+  map, made readable by Phase 37's titles.
 - **Auto-titled threads (Phase 37)** — each persisted session now gets a short,
   human, context-derived title, generated once and **stored** in `threads:meta`
   (so the session browser is instant and a session pays for at most one small call

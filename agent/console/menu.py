@@ -14,6 +14,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -264,10 +265,18 @@ def _status(root: Path) -> str:
     return f"{provider} · {model}"
 
 
-def _chat(root) -> None:
+def _chat(root, session_id=None) -> None:
+    """Open the REPL.
+
+    With no *session_id* and threads enabled, resume the most-recently-used
+    session (continue where you left off, Phase 38); with none saved yet it falls
+    back to a fresh, ephemeral REPL — today's behaviour. A *session_id* passed by
+    the session manager forces that specific session (or a brand-new one).
+    """
     from ..runtime.config import load_config
     from ..runtime.context import build_deps, close_deps
     from ..engine.factory import build_agent
+    from ..runtime import threads
     from ..__main__ import _repl
 
     _clear()
@@ -276,12 +285,100 @@ def _chat(root) -> None:
     deps = build_deps(config)
     deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
-        _repl(agent, config, deps)
+        session_id = threads.resume_target(deps.store, config.settings, session_id)
+        _repl(agent, config, deps, session_id)
     except Exception as exc:  # noqa: BLE001 - keep the menu alive
         display.err(str(exc))
         input("  press Enter to return…")
     finally:
         close_deps(deps)
+
+
+# ── Sessions (the CLI session browser, Phase 38) ─────────────────────────────
+
+def _new_session_id() -> str:
+    """A fresh CLI session id — timestamped so the browser lists it sensibly."""
+    return time.strftime("cli-%Y%m%d-%H%M%S")
+
+
+def _session_label(row: dict) -> str:
+    """One browser row: ``title · <relative last-used> · channel``."""
+    title = _clip(row.get("title") or "(untitled)", 44)
+    when = display.relative_time(row.get("updated_at"))
+    channel = row.get("channel") or "—"
+    return f"{title}  ·  {when}  ·  {channel}"
+
+
+def _sessions(root) -> None:
+    """Session manager: resume / rename / delete saved conversations (Phase 38).
+
+    Lists every saved session (all channels) newest-first with a context-derived
+    title and a relative last-used time. Inert when threads are off.
+    """
+    from ..runtime.config import load_config
+    from ..runtime.context import build_deps, close_deps
+    from ..runtime import threads
+
+    config = load_config(root)
+    if not threads.enabled(config.settings):
+        select("Sessions", ["Back"],
+               subtitle="threads are off — set threads.enabled: true in settings.yaml")
+        return
+    while True:
+        deps = build_deps(config)
+        try:
+            rows = threads.sessions_by_recency(deps.store)
+        finally:
+            close_deps(deps)  # release the store before the REPL reopens it
+        options = [_session_label(r) for r in rows] + ["+ New chat", "Back"]
+        sub = (f"{len(rows)} saved session(s) — newest first" if rows
+               else "no saved sessions yet — start one with New chat")
+        choice = select("Sessions", options, subtitle=sub)
+        if choice is None or choice == len(options) - 1:   # Esc / Back
+            return
+        if choice == len(rows):                            # + New chat
+            _chat(root, session_id=_new_session_id())
+            continue
+        _session_actions(root, config, rows[choice]["id"])
+
+
+def _session_actions(root, config, sid: str) -> None:
+    """Resume / rename / delete one session. Reopens the store per pass so the
+    REPL (which opens its own) never overlaps this menu's handle on it."""
+    from ..runtime.context import build_deps, close_deps
+    from ..runtime import threads
+
+    while True:
+        deps = build_deps(config)
+        resume = False
+        try:
+            meta = threads.thread_meta(deps.store).get(sid, {})
+            title = meta.get("title") or "(untitled)"
+            sub = (f"{_clip(title, 46)}  ·  {display.relative_time(meta.get('updated_at'))}"
+                   f"  ·  {meta.get('channel') or '—'}")
+            choice = select(f"Session · {sid}", ["Resume", "Rename", "Delete", "Back"],
+                            subtitle=_clip(sub, 70))
+            if choice == 0:                                # Resume (after closing store)
+                resume = True
+            elif choice == 1:                              # Rename → re-title
+                new = _edit_line("  title= ", "" if title == "(untitled)" else title)
+                if new is not None and new.strip():
+                    threads.rename_thread(deps.store, sid, new.strip())
+                    display.ok("renamed")
+                continue
+            elif choice == 2:                              # Delete (confirm first)
+                if select(f"Delete '{_clip(title, 40)}'?", ["Cancel", "Delete"]) == 1:
+                    threads.clear_thread(deps.store, sid)
+                    display.ok("deleted")
+                    return
+                continue
+            else:                                          # Back / Esc
+                return
+        finally:
+            close_deps(deps)
+        if resume:
+            _chat(root, session_id=sid)
+            return
 
 
 def _serve(root) -> None:
@@ -822,44 +919,47 @@ def _first_run_setup(root: Path) -> None:
 
 # ── Main loop ────────────────────────────────────────────────────────────────
 
+def _run_wizard(root) -> None:
+    from . import wizard
+
+    wizard.run_wizard(root)
+
+
+def _threads_on(root: Path) -> bool:
+    """Whether persistent threads are enabled — gates the Sessions menu item."""
+    try:
+        from ..runtime.config import load_config
+        from ..runtime import threads
+
+        return threads.enabled(load_config(root).settings)
+    except Exception:  # noqa: BLE001 - a bad config must never hide the whole menu
+        return False
+
+
 def run(root: str | None = None) -> int:
     root_path = Path(root or os.getcwd()).resolve()
     if _needs_setup(root_path):
         _first_run_setup(root_path)
     while True:
-        choice = select(
-            "Main menu",
-            [
-                "Chat with the agent",
-                "Scheduler",
-                "Subagents",
-                "Gateways",
-                "Settings",
-                "Serve (HTTP + live monitor)",
-                "Create a new agent",
-                "Check for updates",
-                "Quit",
-            ],
-            subtitle=_status(root_path),
-        )
-        if choice == 0:
-            _chat(root)
-        elif choice == 1:
-            _scheduler(root)
-        elif choice == 2:
-            _subagents(root_path)
-        elif choice == 3:
-            _gateways(root_path)
-        elif choice == 4:
-            _settings(root_path)
-        elif choice == 5:
-            _serve(root)
-        elif choice == 6:
-            from . import wizard
-
-            wizard.run_wizard(root)
-        elif choice == 7:
-            _check_updates(root_path)
-        else:
+        # "Sessions" sits directly below Chat when threads are on (Phase 38); it's
+        # hidden otherwise, so an older settings.yaml keeps today's menu. Each item
+        # is (label, handler) so the varying length never desyncs the dispatch.
+        items: list[tuple[str, Any]] = [("Chat with the agent", lambda: _chat(root))]
+        if _threads_on(root_path):
+            items.append(("Sessions", lambda: _sessions(root)))
+        items += [
+            ("Scheduler", lambda: _scheduler(root)),
+            ("Subagents", lambda: _subagents(root_path)),
+            ("Gateways", lambda: _gateways(root_path)),
+            ("Settings", lambda: _settings(root_path)),
+            ("Serve (HTTP + live monitor)", lambda: _serve(root)),
+            ("Create a new agent", lambda: _run_wizard(root)),
+            ("Check for updates", lambda: _check_updates(root_path)),
+            ("Quit", None),
+        ]
+        choice = select("Main menu", [label for label, _ in items], subtitle=_status(root_path))
+        handler = items[choice][1] if choice is not None else None
+        if handler is None:                    # Quit / Esc
             _clear()
             return 0
+        handler()

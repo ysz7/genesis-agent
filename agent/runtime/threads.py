@@ -137,6 +137,59 @@ def thread_meta(store: Store) -> dict[str, dict]:
     return meta
 
 
+def sessions_by_recency(store: Store) -> list[dict]:
+    """Every saved session as a metadata dict (``id`` included), newest-used first.
+
+    Reads through :func:`thread_meta`, so the legacy flat index is migrated first
+    and sessions from **every** channel (CLI, server, gateways) appear in one list —
+    the input the cross-channel session browser (Phase 38/39) renders. Sorted by
+    ``updated_at`` descending; entries with no timestamp (legacy, never re-saved)
+    fall to the end, ``id`` breaking ties for a stable order.
+    """
+    meta = thread_meta(store)
+    rows = [{"id": sid, **entry} for sid, entry in meta.items()]
+    rows.sort(key=lambda r: (r.get("updated_at") or "", r["id"]), reverse=True)
+    return rows
+
+
+def most_recent_session(store: Store) -> str | None:
+    """The id of the most-recently-used session, or ``None`` when there are none.
+
+    What "Chat" resumes so the CLI drops back into where you left off (Phase 38);
+    ``None`` means start fresh (no sessions yet).
+    """
+    rows = sessions_by_recency(store)
+    return rows[0]["id"] if rows else None
+
+
+def resume_target(store: Store, settings: dict, session_id: str | None = None) -> str | None:
+    """Which session "Chat" should open (Phase 38).
+
+    An explicit *session_id* wins (the manager picked one); otherwise, with threads
+    enabled, resume the most-recently-used session, falling back to ``None`` — a
+    fresh, ephemeral REPL — when threads are off or none are saved yet.
+    """
+    if session_id is not None:
+        return session_id
+    if not enabled(settings):
+        return None
+    return most_recent_session(store)
+
+
+def rename_thread(store: Store, session_id: str, title: str) -> None:
+    """Set a session's stored title (the session manager's rename, Phase 38).
+
+    Writes into ``threads:meta`` without touching the saved conversation blob; a
+    session that has no meta entry yet gets one so an id-only legacy thread can be
+    titled by hand.
+    """
+    meta = store.get(_META, {}) or {}
+    entry = dict(meta.get(session_id) or {})
+    entry["title"] = title.strip()
+    meta[session_id] = entry
+    store.set(_META, meta)
+
+
 def load_thread(store: Store, session_id: str) -> list:
     """Return the saved history for *session_id*, or ``[]`` if absent/corrupt."""
     data = store.get(_key(session_id))
