@@ -314,6 +314,81 @@ def test_relative_time_formatting():
     assert display.relative_time((now - timedelta(days=20)).isoformat()) == "2w ago"
 
 
+# ── Phase 39: gateway per-user sessions (pure helpers) ───────────────────────
+
+def test_active_session_defaults_to_main_for_first_time_user(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    assert threads.active_slug(store, "telegram:99") is None      # nothing yet
+    sid = threads.active_session(store, "telegram:99")
+    assert sid == "telegram:99:main"                              # sane default
+    assert threads.active_slug(store, "telegram:99") == "main"    # pointer persisted
+    store.close()
+
+
+def test_new_and_resume_switch_active_session(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    prefix = "telegram:7"
+    threads.active_session(store, prefix)                          # 'main'
+    slug = threads.new_session(store, prefix, "Work Notes", channel="telegram")
+    assert slug == "work-notes"                                    # name slugified
+    assert threads.active_slug(store, prefix) == "work-notes"      # new one active
+    # /sessions lists both, newest (the new one) first, with slugs.
+    rows = threads.user_sessions(store, prefix)
+    assert {r["slug"] for r in rows} == {"main", "work-notes"}
+    assert rows[0]["slug"] == "work-notes"                         # newest first
+    # resolve by 1-based index and by slug, then switch back to main.
+    assert threads.resolve_session(store, prefix, "1") == "work-notes"
+    assert threads.resolve_session(store, prefix, "2") == "main"
+    assert threads.resolve_session(store, prefix, "main") == "main"
+    assert threads.resolve_session(store, prefix, "nope") is None
+    threads.set_active(store, prefix, "main")
+    assert threads.active_slug(store, prefix) == "main"
+    store.close()
+
+
+def test_new_session_dedupes_slug(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    prefix = "telegram:7"
+    assert threads.new_session(store, prefix, "trip") == "trip"
+    assert threads.new_session(store, prefix, "trip") == "trip-2"  # collision → suffix
+    store.close()
+
+
+def test_delete_active_session_repoints_pointer(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    prefix = "telegram:7"
+    threads.save_thread(store, "telegram:7:main", _msgs(), channel="telegram")
+    threads.new_session(store, prefix, "work", channel="telegram")  # active = work
+    threads.save_thread(store, "telegram:7:work", _msgs(), channel="telegram")
+    threads.delete_session(store, prefix, "work")                   # delete the active one
+    assert "telegram:7:work" not in [r["id"] for r in threads.user_sessions(store, prefix)]
+    assert threads.active_slug(store, prefix) == "main"             # repointed to what's left
+    store.close()
+
+
+def test_user_sessions_isolates_users_and_channels(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    threads.save_thread(store, "telegram:12:main", _msgs(), channel="telegram")
+    threads.save_thread(store, "telegram:123:main", _msgs(), channel="telegram")  # different user
+    threads.save_thread(store, "whatsapp:12:main", _msgs(), channel="whatsapp")   # different channel
+    slugs = [r["id"] for r in threads.user_sessions(store, "telegram:12")]
+    assert slugs == ["telegram:12:main"]           # trailing ':' stops 12 matching 123
+    store.close()
+
+
+def test_active_session_adopts_legacy_single_thread(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    # A pre-Phase-39 gateway thread lives at the bare prefix id.
+    threads.save_thread(store, "telegram:7", _msgs("LEGACY-1"), channel="telegram")
+    sid = threads.active_session(store, "telegram:7")               # first multi-session use
+    assert sid == "telegram:7:main"
+    moved = threads.load_thread(store, "telegram:7:main")
+    assert "LEGACY-1" in str(moved)                                 # history carried over
+    assert threads.load_thread(store, "telegram:7") == []           # old id retired
+    assert "telegram:7" not in [r["id"] for r in threads.sessions_by_recency(store)]
+    store.close()
+
+
 # ── End-to-end: server session ───────────────────────────────────────────────
 
 def _free_port() -> int:

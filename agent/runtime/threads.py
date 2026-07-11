@@ -19,6 +19,8 @@ live in ``workspace/`` (the sandbox), like everything else the agent persists.
 from __future__ import annotations
 
 import logging
+import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -61,6 +63,41 @@ def _key(session_id: str) -> str:
 def _now() -> str:
     """UTC timestamp for ``updated_at`` (second precision, ISO 8601)."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def relative_time(iso: str | None) -> str:
+    """Human 'time since' for an ISO-8601 UTC stamp — the session browser's clock.
+
+    Lives here (dependency-free) so both the rich CLI *and* the headless gateways
+    can label sessions without importing the console layer. Returns ``—`` when the
+    timestamp is missing or unparseable (e.g. a legacy thread with no ``updated_at``),
+    so nothing crashes on old metadata.
+    """
+    if not iso:
+        return "—"
+    try:
+        then = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return "—"
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    secs = int(max((datetime.now(timezone.utc) - then).total_seconds(), 0))
+    if secs < 60:
+        return "just now"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins}m ago"
+    hours = mins // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d ago"
+    if days < 30:
+        return f"{days // 7}w ago"
+    if days < 365:
+        return f"{days // 30}mo ago"
+    return f"{days // 365}y ago"
 
 
 def save_thread(
@@ -188,6 +225,143 @@ def rename_thread(store: Store, session_id: str, title: str) -> None:
     entry["title"] = title.strip()
     meta[session_id] = entry
     store.set(_META, meta)
+
+
+# ── Gateway per-user sessions (Phase 39) ─────────────────────────────────────
+# A gateway user holds several sessions under ``<gateway>:<user_id>:<slug>``, with
+# an active-session pointer ``active:<gateway>:<user_id>`` → the current slug. The
+# *prefix* (``<gateway>:<user_id>``) keys everything; helpers take it so the same
+# code serves every channel. Off (threads disabled) the gateway keeps its single
+# rolling ``<gateway>:<user_id>`` thread — today's behaviour.
+
+def _active_key(prefix: str) -> str:
+    return f"active:{prefix}"
+
+
+def _sid(prefix: str, slug: str) -> str:
+    return f"{prefix}:{slug}"
+
+
+def _slugify(name: str) -> str:
+    """A safe, short slug from a user-supplied name (empty when nothing usable)."""
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")[:32]
+
+
+def user_sessions(store: Store, prefix: str) -> list[dict]:
+    """This gateway user's sessions (metadata dicts + ``id``/``slug``), newest first.
+
+    Filters the global recency list to ids under ``<prefix>:`` — the trailing
+    separator keeps ``telegram:12`` from matching ``telegram:123:main``.
+    """
+    rows = []
+    for r in sessions_by_recency(store):
+        if r["id"].startswith(prefix + ":"):
+            rows.append({**r, "slug": r["id"][len(prefix) + 1:]})
+    return rows
+
+
+def active_slug(store: Store, prefix: str) -> str | None:
+    """The current active-session slug for a gateway user, or ``None`` if unset."""
+    return store.get(_active_key(prefix)) or None
+
+
+def _adopt_legacy_thread(store: Store, prefix: str, slug: str) -> None:
+    """Fold a pre-Phase-39 single thread (``<prefix>``) into ``<prefix>:<slug>``.
+
+    So enabling multi-session on an existing bot doesn't orphan a user's history:
+    the blob, index entry, and meta entry move under the new slugged id (a move,
+    not a copy — the old id is retired). No-op when there's nothing to adopt.
+    """
+    legacy_key = _key(prefix)
+    blob = store.get(legacy_key)
+    sid = _sid(prefix, slug)
+    if not blob or store.get(_key(sid)):
+        return
+    store.set(_key(sid), blob)
+    store.delete(legacy_key)
+    index = store.get(_INDEX, []) or []
+    if prefix in index:
+        store.set(_INDEX, [sid if x == prefix else x for x in index])
+    meta = store.get(_META, {}) or {}
+    if prefix in meta and sid not in meta:
+        meta[sid] = meta.pop(prefix)
+        store.set(_META, meta)
+
+
+def active_session(store: Store, prefix: str) -> str:
+    """The active session id for a gateway user, defaulting sanely on first use.
+
+    With no pointer yet, adopts a legacy single-thread as ``<prefix>:main`` (so an
+    upgrade keeps the user's history), else starts a fresh ``main`` — and persists
+    the pointer so subsequent turns land in the same place.
+    """
+    slug = store.get(_active_key(prefix))
+    if not slug:
+        slug = "main"
+        store.set(_active_key(prefix), slug)
+        _adopt_legacy_thread(store, prefix, slug)
+        # Make the default session visible in /sessions right away (adoption may
+        # already have moved a meta entry across, in which case this is a no-op).
+        _ensure_meta(store, _sid(prefix, slug), prefix.split(":", 1)[0])
+    return _sid(prefix, slug)
+
+
+def _ensure_meta(store: Store, session_id: str, channel: str) -> None:
+    """Seed an empty meta entry so a just-created session shows up before its first
+    save (the ``/sessions`` list and its active marker are then immediately right)."""
+    meta = store.get(_META, {}) or {}
+    if session_id not in meta:
+        meta[session_id] = {
+            "title": "", "updated_at": _now(), "channel": channel, "msg_count": 0
+        }
+        store.set(_META, meta)
+
+
+def new_session(store: Store, prefix: str, name: str = "", channel: str = "") -> str:
+    """Create + activate a fresh session for a gateway user; returns its slug.
+
+    A given *name* becomes the slug (slugified, de-duplicated); with none, a
+    timestamped slug is used. The new session is seeded in the meta map so it
+    lists immediately, and the active pointer moves to it.
+    """
+    base = _slugify(name) or time.strftime("s%Y%m%d-%H%M%S")
+    existing = {r["slug"] for r in user_sessions(store, prefix)}
+    slug = base
+    i = 2
+    while slug in existing:
+        slug = f"{base}-{i}"
+        i += 1
+    store.set(_active_key(prefix), slug)
+    _ensure_meta(store, _sid(prefix, slug), channel)
+    return slug
+
+
+def resolve_session(store: Store, prefix: str, ref: str) -> str | None:
+    """Resolve a ``/resume``/``/delete`` argument to a slug: a 1-based index (as
+    shown by ``/sessions``) or a literal slug. ``None`` when it matches nothing."""
+    ref = (ref or "").strip()
+    rows = user_sessions(store, prefix)
+    if ref.isdigit():
+        i = int(ref) - 1
+        return rows[i]["slug"] if 0 <= i < len(rows) else None
+    return next((r["slug"] for r in rows if r["slug"] == ref), None)
+
+
+def set_active(store: Store, prefix: str, slug: str) -> None:
+    """Point a gateway user's active session at *slug* (``/resume``)."""
+    store.set(_active_key(prefix), slug)
+
+
+def delete_session(store: Store, prefix: str, slug: str) -> None:
+    """Delete one of a gateway user's sessions; repoint ``active`` if it was current.
+
+    When the deleted session was active, the pointer moves to the most-recent
+    remaining session, or back to a fresh ``main`` when none are left.
+    """
+    clear_thread(store, _sid(prefix, slug))
+    if active_slug(store, prefix) == slug:
+        rows = user_sessions(store, prefix)
+        store.set(_active_key(prefix), rows[0]["slug"] if rows else "main")
 
 
 def load_thread(store: Store, session_id: str) -> list:

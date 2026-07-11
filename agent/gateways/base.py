@@ -219,8 +219,18 @@ class Pipeline:
         self.last_tokens = 0          # tokens of the most recent run (for the monitor)
 
     def session_for(self, user_id: Any) -> str:
-        """The persistent-thread id for a platform user: ``<gateway>:<user_id>``."""
-        return f"{self.name}:{user_id}"
+        """The active persistent-thread id for a platform user.
+
+        With threads enabled the user has several sessions and an active pointer
+        (Phase 39): return ``<gateway>:<user_id>:<active-slug>``. Off, it's the
+        single rolling ``<gateway>:<user_id>`` thread — today's behaviour.
+        """
+        from ..runtime import threads
+
+        prefix = f"{self.name}:{user_id}"
+        if threads.enabled(self.settings):
+            return threads.active_session(self.deps.store, prefix)
+        return prefix
 
     async def run_turn(self, inbound: Inbound) -> str:
         """Run one inbound message and return the reply text.
@@ -421,9 +431,11 @@ class Gateway(ABC):
     def handle_command(self, inbound: "Inbound") -> str | None:
         """Return a reply for a ``/command``, or None to let the agent handle it.
 
-        ``/whoami`` and ``/help`` are for any allowed user; ``/allow``, ``/deny``
-        and ``/allowlist`` are owner-only and manage the deny-all allowlist live.
-        An unrecognized ``/command`` falls through to the agent (returns None).
+        ``/whoami`` and ``/help`` are for any allowed user; the ``/sessions`` family
+        (Phase 39) lets each user manage their own conversations; ``/allow``,
+        ``/deny`` and ``/allowlist`` are owner-only and manage the deny-all
+        allowlist live. An unrecognized ``/command`` falls through to the agent
+        (returns None).
         """
         text = (inbound.text or "").strip()
         if not text.startswith("/"):
@@ -431,12 +443,19 @@ class Gateway(ABC):
         parts = text.split()
         cmd = parts[0][1:].split("@", 1)[0].lower()   # strip leading / and @BotName
         arg = parts[1].strip() if len(parts) > 1 else ""
+        rest = text.split(maxsplit=1)[1].strip() if len(parts) > 1 else ""
 
         if cmd == "whoami":
             return f"Your {self.id_label}: {inbound.user_id}"
         if cmd in ("start", "help"):
+            from ..runtime import threads
+
+            sess = " · /sessions · /new · /resume · /rename · /delete" if threads.enabled(
+                self.config.settings) else ""
             extra = " · /allow <id> · /deny <id> · /allowlist" if self.is_owner(inbound.user_id) else ""
-            return f"Commands: /whoami{extra}\nSend me a message and I'll answer."
+            return f"Commands: /whoami{sess}{extra}\nSend me a message and I'll answer."
+        if cmd in ("sessions", "new", "resume", "rename", "delete"):
+            return self._session_command(inbound, cmd, rest)
         if cmd in ("allow", "deny", "allowlist", "allowed"):
             if not self.is_owner(inbound.user_id):
                 return "Owner only."
@@ -452,6 +471,58 @@ class Gateway(ABC):
                 return f"Removed {arg}." if ok else f"Cannot revoke {arg} — it is seeded in settings.yaml."
             ids = self.access.listing()
             return "Allowed ids: " + (", ".join(ids) if ids else "(none)")
+        return None
+
+    def _session_command(self, inbound: "Inbound", cmd: str, rest: str) -> str | None:
+        """The per-user ``/sessions`` family (Phase 39): list / switch / rename /
+        delete the caller's own conversations. Inert (falls through) with threads
+        off, so an older settings.yaml keeps the single-thread-per-user behaviour.
+        """
+        from ..runtime import threads
+
+        if not threads.enabled(self.config.settings):
+            return None  # threads off → single rolling thread; command not offered
+        store = self.deps.store
+        prefix = f"{self.name}:{inbound.user_id}"
+
+        if cmd == "sessions":
+            rows = threads.user_sessions(store, prefix)
+            if not rows:
+                return "No sessions yet. Send a message to start one, or /new <name>."
+            active = threads.active_slug(store, prefix)
+            lines = []
+            for i, r in enumerate(rows, 1):
+                mark = "→" if r["slug"] == active else " "
+                title = r.get("title") or "(untitled)"
+                lines.append(
+                    f"{mark} {i}. {title} · {threads.relative_time(r.get('updated_at'))} · {r['slug']}"
+                )
+            return "Your sessions:\n" + "\n".join(lines)
+        if cmd == "new":
+            slug = threads.new_session(store, prefix, rest, channel=self.name)
+            label = f" '{rest.strip()}'" if rest.strip() else ""
+            return f"Started a new session{label} — it's now active. (id: {slug})"
+        if cmd == "resume":
+            if not rest:
+                return "usage: /resume <number|name>  (see /sessions)"
+            slug = threads.resolve_session(store, prefix, rest)
+            if slug is None:
+                return f"No session matching '{rest}'. See /sessions."
+            threads.set_active(store, prefix, slug)
+            return f"Resumed '{slug}'. New messages land here."
+        if cmd == "rename":
+            if not rest:
+                return "usage: /rename <new title>  (renames the active session)"
+            threads.rename_thread(store, threads.active_session(store, prefix), rest)
+            return f"Renamed the active session to '{rest}'."
+        if cmd == "delete":
+            if not rest:
+                return "usage: /delete <number|name>  (see /sessions)"
+            slug = threads.resolve_session(store, prefix, rest)
+            if slug is None:
+                return f"No session matching '{rest}'. See /sessions."
+            threads.delete_session(store, prefix, slug)
+            return f"Deleted '{slug}'."
         return None
 
     # ── scheduled-result delivery (Phase 23/25a) ───────────────────────────────

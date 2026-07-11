@@ -11,6 +11,17 @@ syncing, since some releases change defaults.
 ## [Unreleased]
 
 ### Added
+- **Gateway per-user sessions (Phase 39)** — a gateway user is no longer pinned to
+  one rolling thread: with threads on, each user holds several sessions
+  (`<gateway>:<user_id>:<slug>`) plus an active-session pointer
+  (`active:<gateway>:<user_id>`), managed in-chat with `/sessions` (auto-titled +
+  last-used), `/new [name]`, `/resume <n|name>`, `/rename <text>`, `/delete
+  <n|name>` — the same session model as the CLI, routed in `Gateway.handle_command`
+  before the agent runs (Telegram and WhatsApp share the text commands). New
+  messages load/save the *active* session, which auto-titles like the CLI. On first
+  multi-session use a pre-Phase-39 single thread is **adopted** as the user's `main`
+  session, so enabling this never orphans history. Threads off → today's single
+  thread per user, unchanged. Access rules (allowlist / owner gates) are untouched.
 - **CLI session browser (Phase 38)** — the interactive menu becomes a real session
   browser when threads are on. **Chat with the agent** now resumes the
   most-recently-used session (continue where you left off) instead of always

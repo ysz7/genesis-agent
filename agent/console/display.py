@@ -125,39 +125,9 @@ def _short(p: Path | str, n: int = 36) -> str:
     return "…" + s[-(n - 1):] if len(s) > n else s
 
 
-def relative_time(iso: str | None) -> str:
-    """Human 'time since' for an ISO-8601 UTC stamp — the session browser's clock.
-
-    Returns ``—`` when the timestamp is missing or unparseable (e.g. a legacy
-    thread with no ``updated_at``), so the CLI never crashes on old metadata.
-    """
-    if not iso:
-        return "—"
-    from datetime import datetime, timezone
-
-    try:
-        then = datetime.fromisoformat(iso)
-    except (TypeError, ValueError):
-        return "—"
-    if then.tzinfo is None:
-        then = then.replace(tzinfo=timezone.utc)
-    secs = int(max((datetime.now(timezone.utc) - then).total_seconds(), 0))
-    if secs < 60:
-        return "just now"
-    mins = secs // 60
-    if mins < 60:
-        return f"{mins}m ago"
-    hours = mins // 60
-    if hours < 24:
-        return f"{hours}h ago"
-    days = hours // 24
-    if days < 7:
-        return f"{days}d ago"
-    if days < 30:
-        return f"{days // 7}w ago"
-    if days < 365:
-        return f"{days // 30}mo ago"
-    return f"{days // 365}y ago"
+# The session-browser clock lives in the (rich-free) runtime so headless gateways
+# share it; re-exported here for CLI callers (Phase 38/39).
+from ..runtime.threads import relative_time  # noqa: E402,F401
 
 
 def _limits_summary(limits: Any) -> str:

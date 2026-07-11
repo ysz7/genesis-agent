@@ -56,6 +56,9 @@ history_keep: 40
 #   cheap (default): one tiny model side-call from the first message, folded
 #                    into usage — the Claude-Code touch.
 #   off            : free fallback — the trimmed first user message, no call.
+# With this on, the menu grows a "Sessions" browser (resume/rename/delete), and
+# each gateway user gets several sessions managed in-chat: /sessions, /new [name],
+# /resume <n|name>, /rename <text>, /delete <n|name>. Off = one thread per user.
 threads:
   enabled: true
   autotitle: cheap

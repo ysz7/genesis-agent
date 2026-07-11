@@ -17,10 +17,11 @@ from pydantic_ai.messages import (
 )
 
 from agent.gateways.base import (
-    AccessControl, Inbound, Pipeline, Quota,
+    AccessControl, Gateway, Inbound, Pipeline, Quota,
     any_gateway_enabled, gateway_enabled, gateway_settings, store_guard,
 )
 from agent.gateways import manager, registry
+from agent.runtime import threads
 from agent.runtime.store import open_store
 
 
@@ -164,6 +165,118 @@ def test_pipeline_input_guardrail_short_circuits(tmp_path):
     out = asyncio.run(pipe.run_turn(Inbound(user_id="7", text="the secret code")))
     assert "Refused" in out
     assert agent.histories == []                      # agent never ran
+    store.close()
+
+
+# ── Phase 39: gateway per-user sessions ───────────────────────────────────────
+
+class _EchoResult:
+    """A result whose saved history carries the prompt, so we can tell which
+    session a message actually landed in."""
+    def __init__(self, prompt):
+        self.output = f"echo:{prompt}"
+        self._p = str(prompt)
+        self.usage = None
+    def all_messages(self):
+        return [
+            ModelRequest(parts=[UserPromptPart(content=self._p)]),
+            ModelResponse(parts=[TextPart(content=f"echo:{self._p}")]),
+        ]
+
+
+class _EchoAgent:
+    async def run(self, prompt, deps=None, message_history=None, usage_limits=None):
+        return _EchoResult(prompt)
+
+
+def _sess_deps(store, settings):
+    return SimpleNamespace(
+        store=store, settings=settings,
+        config=SimpleNamespace(settings=settings, usage_limits=None),
+        extra={},
+    )
+
+
+def test_pipeline_lands_messages_in_active_session(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    settings = {"threads": {"enabled": True, "autotitle": "off"}}
+    pipe = Pipeline("telegram", _EchoAgent(), _sess_deps(store, settings), settings)
+
+    # First message → default 'main' session.
+    asyncio.run(pipe.run_turn(Inbound(user_id="7", text="hello main")))
+    assert threads.active_slug(store, "telegram:7") == "main"
+    assert "hello main" in str(threads.load_thread(store, "telegram:7:main"))
+
+    # Switch to a new session; the next message lands there, not in main.
+    threads.new_session(store, "telegram:7", "work", channel="telegram")
+    asyncio.run(pipe.run_turn(Inbound(user_id="7", text="hello work")))
+    assert "hello work" in str(threads.load_thread(store, "telegram:7:work"))
+    assert "hello work" not in str(threads.load_thread(store, "telegram:7:main"))  # isolated
+
+    # Resume main; new messages land back there.
+    threads.set_active(store, "telegram:7", "main")
+    asyncio.run(pipe.run_turn(Inbound(user_id="7", text="back in main")))
+    assert "back in main" in str(threads.load_thread(store, "telegram:7:main"))
+    assert "back in main" not in str(threads.load_thread(store, "telegram:7:work"))
+    store.close()
+
+
+def test_pipeline_single_thread_when_threads_off(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    pipe = Pipeline("telegram", _EchoAgent(), _sess_deps(store, {}), {})
+    assert pipe.session_for("7") == "telegram:7"                 # no slug, today's id
+    asyncio.run(pipe.run_turn(Inbound(user_id="7", text="hi")))
+    assert threads.active_slug(store, "telegram:7") is None      # no active pointer created
+    assert "hi" in str(threads.load_thread(store, "telegram:7"))
+    store.close()
+
+
+class _Gw(Gateway):
+    name = "telegram"
+    async def run(self):  # abstract, unused in these tests
+        pass
+    async def send_message(self, client, recipient, text):
+        pass
+
+
+def _gw(store, settings):
+    config = SimpleNamespace(settings=settings, model="m", usage_limits=None)
+    return _Gw(config, SimpleNamespace(store=store, settings=settings))
+
+
+def test_session_commands_route_and_switch(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    gw = _gw(store, {"threads": {"enabled": True, "autotitle": "off"}})
+
+    assert "No sessions yet" in gw.handle_command(Inbound(user_id="7", text="/sessions"))
+    assert "now active" in gw.handle_command(Inbound(user_id="7", text="/new work"))
+    assert threads.active_slug(store, "telegram:7") == "work"
+
+    listing = gw.handle_command(Inbound(user_id="7", text="/sessions"))
+    assert "work" in listing and "→" in listing            # active marker on the new one
+
+    # /new a second, then /resume back to the first by slug.
+    gw.handle_command(Inbound(user_id="7", text="/new travel"))
+    assert threads.active_slug(store, "telegram:7") == "travel"
+    assert "Resumed 'work'" in gw.handle_command(Inbound(user_id="7", text="/resume work"))
+    assert threads.active_slug(store, "telegram:7") == "work"
+
+    # /rename retitles the active session; /delete removes one.
+    gw.handle_command(Inbound(user_id="7", text="/rename Work Stuff"))
+    active_id = threads.active_session(store, "telegram:7")
+    assert threads.thread_meta(store)[active_id]["title"] == "Work Stuff"
+    assert "Deleted 'travel'" in gw.handle_command(Inbound(user_id="7", text="/delete travel"))
+    assert "travel" not in {r["slug"] for r in threads.user_sessions(store, "telegram:7")}
+    store.close()
+
+
+def test_session_commands_inert_when_threads_off(tmp_path):
+    store = open_store(tmp_path / "agent.sqlite")
+    gw = _gw(store, {})                                     # threads off
+    # Falls through to the agent (None) rather than acting.
+    assert gw.handle_command(Inbound(user_id="7", text="/sessions")) is None
+    assert gw.handle_command(Inbound(user_id="7", text="/new work")) is None
+    assert threads.active_slug(store, "telegram:7") is None
     store.close()
 
 
