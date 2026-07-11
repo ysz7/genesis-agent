@@ -8,6 +8,10 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [1.5.1] — 2026-07-11
+
+## Hotfix
+
 ## [1.5.0] — 2026-07-11
 
 ### Added
