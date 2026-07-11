@@ -84,7 +84,9 @@ cd genesis-agent
 - **State store** — `get/set/append/all` over JSON or SQLite for cross-run
   memory; **structured output** — return a typed Pydantic model instead of prose.
 - **Conversation memory** — the REPL threads history across turns and
-  auto-compacts it into a summary when a session outgrows the context budget.
+  auto-compacts it into a summary when a session outgrows the context budget;
+  conversations persist and are **auto-titled**, so a menu **Sessions** browser
+  lets you resume, rename, or delete them across restarts.
 - **Safe by default** — built-in file tools are workspace-sandboxed;
   `run_shell` requires human confirmation out of the box (fetched web content
   is attacker-controlled, so an unconfirmed shell tool is an injection-to-RCE
@@ -99,8 +101,9 @@ cd genesis-agent
 - **Headless HTTP mode** (`--serve`, zero extra deps) with **SSE streaming**,
   **optional [MCP](https://modelcontextprotocol.io) servers**, **Docker-ready**.
 - **Messaging gateways** — chat with the agent from **Telegram** & **WhatsApp**
-  (built into the core, no SDK). Per-user memory, deny-all access control, inbound
-  media, and inline-button approvals (see [Gateways](#gateways-telegram--whatsapp)).
+  (built into the core, no SDK). Per-user sessions (managed in chat), deny-all
+  access control, inbound media, and inline-button approvals (see
+  [Gateways](#gateways-telegram--whatsapp)).
 - **Agent-managed scheduling** — ask in chat for recurring work ("summarize HN
   every 2 hours"): the agent creates/lists/edits/cancels jobs itself, they fire in
   the background while a bot or the server runs, and results are **delivered to
@@ -134,7 +137,7 @@ enable). Every `settings.yaml` key:
 | `render_markdown` | render the final answer as Markdown in the console | ✅ on (default `true`) |
 | `workspace` | sandbox + state directory | ✅ on (`workspace`) |
 | `history_keep` | REPL turns kept between prompts | ✅ on (`40`) |
-| `threads` | persist / resume conversations by id | ⬜ off |
+| `threads` | persist, resume & auto-title conversations; menu **Sessions** browser + per-user gateway sessions | ✅ on (template; code default off) |
 | `context_budget` | usable context window; compaction trigger | ✅ on (`100000`) |
 | `compaction` | summarize old history past the budget | ✅ on |
 | `max_tool_output` | char cap on one tool's output | ✅ on (`20000`) |
@@ -165,8 +168,8 @@ Legend: ✅ active out of the box · ⬜ opt-in (commented out in the template).
 ## Usage
 
 **`start.cmd`** / **`./start.sh`** opens an arrow-key start menu: Chat ·
-Scheduler · Subagents · Gateways · Settings · Serve · Quit. The launchers find
-`uv` and auto-install deps on first run.
+Sessions · Scheduler · Subagents · Gateways · Settings · Serve · Quit. The
+launchers find `uv` and auto-install deps on first run.
 
 <img src="docs/assets/genesis-agent-welcome-cli.png" alt="genesis-agent start menu" width="300">
 
@@ -191,10 +194,12 @@ In the **REPL** (powered by `prompt_toolkit`: multi-line paste, ↑/↓ history,
 line editing), type a task or a command: `/help` · `/tools` · `/clear`
 (forget the conversation) · `/reload` (pick up newly approved tools) ·
 `/attach <path>` (send a file with your next message) · `/quit`. Ctrl+C cancels
-the current line; Ctrl+D exits. With **persistent threads** on
-(`threads.enabled`), `agent --session work` resumes a saved conversation, and
-`/threads` · `/resume <id>` · `/new` manage them — a thread survives a restart
-(see [Configuration](#configuration)).
+the current line; Ctrl+D exits. With **persistent threads** on (the template
+default), conversations are saved and **auto-titled** so they survive a restart:
+the menu's **Sessions** browser lists them (title · last-used · channel) to
+resume, rename, or delete, **Chat** drops back into your most recent one, and in
+the REPL `agent --session work` names a thread while `/threads` (a titled list) ·
+`/resume <id>` · `/new` manage them (see [Configuration](#configuration)).
 
 The **HTTP server** binds `127.0.0.1` (localhost only) by default — pass
 `--host 0.0.0.0` to accept remote connections (the Docker image does this). Set
@@ -277,7 +282,7 @@ files with the same notes — this is just the consolidated reference.
 | `retries` | `2` | Pydantic AI retries per failed tool/model call |
 | `max_tool_output` | `20000` | char cap on a tool's output (`run_shell`, `fetch_url`, HTML cleaner) |
 | `history_keep` | `40` | REPL messages kept between turns |
-| `threads` | — | `enabled: true` → persist/resume conversations by `session_id` (REPL `--session`; server `{"session": ...}`) |
+| `threads` | `enabled: true` (template) | persist/resume conversations (REPL `--session`; server `{"session": ...}`); `autotitle: cheap` names each session; drives the menu **Sessions** browser and per-user gateway sessions |
 | `context_budget` | `100000` | model's usable context (tokens); compaction triggers at ~60% |
 | `compaction` | `enabled: true, keep: 12` | summarize old history past the budget |
 | `limits` | `request_limit: 25` | per-run ceilings (`pydantic_ai.usage.UsageLimits`) |
@@ -292,7 +297,7 @@ files with the same notes — this is just the consolidated reference.
 | `log_transcripts` | `false` | write the full per-run trace to `workspace/transcripts/<ts>-<id>.jsonl` |
 | `transcripts_keep` | `200` | oldest transcript files pruned past this count |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
-| `prompt_caching` | `true` | reuse the provider's prompt cache (Anthropic: tool defs) |
+| `prompt_caching` | `true` | reuse the provider's prompt cache (Anthropic: tool defs; `{tools, prefix}` also caches the conversation prefix) |
 | `planning` | `enabled: true` | `update_plan` todo checklist, shown each turn ([§](#planning--delegation)) |
 | `subagents` | `enabled: true` | `delegate(task)` to isolated sub-agents; `max_depth` caps nesting ([§](#planning--delegation)) |
 | `self_improvement` | `enabled: true` | agent authors skills / tools / memory ([§](#self-improvement-optional)) |
@@ -534,9 +539,12 @@ a token. Configure channels under `gateways:` in `settings.yaml`.
 
 Two invariants worth knowing up front:
 
-- **Per-user memory** — each platform user gets their own persistent thread
-  (`<gateway>:<user_id>`), so gateways need the concurrent **SQLite/WAL** store:
-  set `store: agent.sqlite` in `settings.yaml`.
+- **Per-user sessions** — each platform user gets their own conversations
+  (several per user, with an active-session pointer), managed in chat with
+  `/sessions`, `/new [name]`, `/resume <n|name>`, `/rename`, `/delete` and
+  **auto-titled** like the CLI. Gateways need the concurrent **SQLite/WAL** store:
+  set `store: agent.sqlite` in `settings.yaml`. (With `threads` off it's a single
+  rolling thread per user, as before.)
 - **Deny-all access** — an empty `allowlist` means *nobody*. Add ids in settings,
   from the menu, or (Telegram) let the owner run `/allow <id>` in chat.
 
@@ -555,7 +563,8 @@ Two invariants worth knowing up front:
    terminal: `uv run agent --gateway telegram`.
 
 In the chat, the owner manages access with `/allow <id>`, `/deny <id>`,
-`/allowlist`; anyone allowed can `/whoami`. Send a photo or document and a
+`/allowlist`; anyone allowed can `/whoami` and manage their own conversations
+with `/sessions` · `/new` · `/resume` · `/rename` · `/delete`. Send a photo or document and a
 vision model sees it. If a tool needs confirmation, the bot shows
 **Allow / Always / Deny** buttons (set `approvals: refuse` to disable). Stop the
 bot from the same menu screen, or view its log there.
@@ -580,7 +589,8 @@ is reachable at `POST /webhook/<name>`:
 ### WhatsApp (webhook-only)
 
 WhatsApp has full functional parity with Telegram — owner commands
-(`/allow` · `/deny` · `/allowlist` · `/whoami`), inbound media (image / document /
+(`/allow` · `/deny` · `/allowlist` · `/whoami`), per-user sessions (`/sessions` ·
+`/new` · `/resume` · `/rename` · `/delete`), inbound media (image / document /
 voice → vision or inlined text), approval **reply buttons** (Allow once / Always /
 Deny), per-user quota, scheduled-result delivery to all allowlisted numbers, and
 replies rendered in WhatsApp's own formatting (`*bold*`, `_italic_`,
