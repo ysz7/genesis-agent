@@ -269,9 +269,10 @@ def _chat(root, session_id=None) -> None:
     """Open the REPL.
 
     With no *session_id* and threads enabled, resume the most-recently-used
-    session (continue where you left off, Phase 38); with none saved yet it falls
-    back to a fresh, ephemeral REPL — today's behaviour. A *session_id* passed by
-    the session manager forces that specific session (or a brand-new one).
+    session (continue where you left off, Phase 38), or **start a fresh persisted
+    one** when there's nothing to resume — so a first chat is saved and shows up in
+    the browser, not silently ephemeral. With threads off it's an ephemeral REPL,
+    as before. A *session_id* passed by the session manager forces that session.
     """
     from ..runtime.config import load_config
     from ..runtime.context import build_deps, close_deps
@@ -286,6 +287,8 @@ def _chat(root, session_id=None) -> None:
     deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
         session_id = threads.resume_target(deps.store, config.settings, session_id)
+        if session_id is None and threads.enabled(config.settings):
+            session_id = _new_session_id()   # first chat → a fresh, saved session
         _repl(agent, config, deps, session_id)
     except Exception as exc:  # noqa: BLE001 - keep the menu alive
         display.err(str(exc))

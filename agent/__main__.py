@@ -241,7 +241,10 @@ def _repl(agent, config, deps, session_id=None) -> int:
         display.warn("--session ignored: set threads.enabled: true in settings.yaml")
     if session:
         history = threads.load_thread(deps.store, session)
-        display.info(f"resumed thread '{session}' ({len(history)} messages)")
+        if history:
+            display.info(f"resumed thread '{session}' ({len(history)} messages)")
+        else:
+            display.info(f"new thread '{session}'")
 
     # prompt_toolkit input: correct multi-line paste, ↑/↓ history, line editing
     # (cross-platform). Falls back to input() when unavailable / not a TTY.
@@ -374,21 +377,31 @@ def _repl_loop(agent, config, deps, tools, history, keep, threads_on, session, p
             )
         else:
             prompt = task_text
+        # The whole turn runs under ONE `async with agent:` so the auto-title call
+        # (a side model_request after the run) still has an open provider client:
+        # `run_streamed` opens its own `async with agent:`, and pydantic_ai closes
+        # the model's HTTP client when that block exits — so titling *after* it
+        # would hit a closed client ("Connection error"). Wrapping here keeps the
+        # client open via pydantic_ai's enter/exit ref-count until the turn ends.
+        async def _turn():
+            async with agent:
+                result = await display.run_streamed(
+                    agent, prompt, deps, config.model, message_history=history
+                )
+                display.answer(result.output, markdown=config.settings.get("render_markdown", True))
+                history.extend(result.new_messages())
+                if len(history) > keep:
+                    del history[:-keep]
+                if session:                   # persist + auto-title the thread (Phase 18/37)
+                    threads.save_thread(deps.store, session, history, keep=keep, channel="cli")
+                    await threads.autotitle_thread(
+                        deps.store, session, history, config.settings,
+                        model=agent.model, usage=threads.usage_of(result),
+                    )
+                return result
+
         try:
-            result = asyncio.run(
-                display.run_streamed(agent, prompt, deps, config.model, message_history=history)
-            )
-            display.answer(result.output, markdown=config.settings.get("render_markdown", True))
-            history.extend(result.new_messages())
-            if len(history) > keep:
-                del history[:-keep]
-            if session:                       # persist the thread (Phase 18)
-                threads.save_thread(deps.store, session, history, keep=keep, channel="cli")
-                # Auto-title the session once (Phase 37) — cheap side-call, stored.
-                asyncio.run(threads.autotitle_thread(
-                    deps.store, session, history, config.settings,
-                    model=agent.model, usage=threads.usage_of(result),
-                ))
+            result = asyncio.run(_turn())
             # A tool the agent authored + got approved this turn → hot-reload so
             # it's callable immediately (Phase 11b).
             if deps.extra.pop("reload_pending", False):

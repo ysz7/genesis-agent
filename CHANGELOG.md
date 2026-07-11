@@ -8,7 +8,7 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
-## [Unreleased]
+## [1.5.0] — 2026-07-11
 
 ### Added
 - **Gateway per-user sessions (Phase 39)** — a gateway user is no longer pinned to
@@ -25,9 +25,12 @@ syncing, since some releases change defaults.
 - **CLI session browser (Phase 38)** — the interactive menu becomes a real session
   browser when threads are on. **Chat with the agent** now resumes the
   most-recently-used session (continue where you left off) instead of always
-  starting fresh; with none saved yet, or threads off, it falls back to today's
-  fresh REPL. A new **Sessions** item (directly below Chat, hidden when threads are
-  off) lists every saved session across **all** channels — `title · <relative
+  starting fresh; with none saved yet it starts a **fresh persisted** session (so a
+  first chat is saved and shows up in the browser, not silently ephemeral), and
+  only with threads off does it fall back to an ephemeral REPL. The REPL labels a
+  brand-new session `new thread '<id>'` rather than a misleading `resumed thread …
+  (0 messages)`. A new **Sessions** item (directly below Chat, hidden when threads
+  are off) lists every saved session across **all** channels — `title · <relative
   last-used> · channel`, newest first — with New chat, and per-session Resume /
   Rename / Delete. In-REPL parity: `/threads` now prints the same title +
   last-used table instead of raw ids. New `threads.sessions_by_recency` /
@@ -43,8 +46,12 @@ syncing, since some releases change defaults.
   usage; `off` is a free fallback that trims the first user message with **zero**
   model calls. Written next to `threads.save_thread` and invoked by every writer
   (REPL, server, Telegram, WhatsApp); degrades to the fallback when no model is
-  available, and a failed side-call never breaks the run. Builds on Phase 36's
-  meta map; the readable input for the Phase 38/39 session browser.
+  available, and a failed side-call never breaks the run. In the REPL the whole
+  turn runs under one `async with agent:` so the title call fires while the
+  provider's HTTP client is still open — pydantic_ai closes it on context exit, so
+  titling *after* `run_streamed` would otherwise fail with a spurious "Connection
+  error". Builds on Phase 36's meta map; the readable input for the Phase 38/39
+  session browser.
 
 ## [1.4.0] — 2026-07-10
 
