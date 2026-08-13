@@ -47,7 +47,21 @@ def _clear() -> None:
 # ── Key reading (stdlib, cross-platform) ─────────────────────────────────────
 
 def _read_key() -> str | None:
-    """Return 'up' | 'down' | 'enter' | 'esc' | a character, or None."""
+    """Return 'up' | 'down' | 'enter' | 'esc' | a character, or None.
+
+    POSIX: assumes the fd is *already* in raw mode (the caller holds it raw
+    for the whole selection loop — see ``select()``). Reads go through
+    ``os.read()`` directly on the fd rather than ``sys.stdin.read()``:
+    ``sys.stdin`` is a *buffered* stream, so a single ``.read(1)`` call can
+    silently slurp every byte the kernel currently has (e.g. all 3 bytes of
+    an arrow key's "\\x1b[A") into Python's internal buffer while returning
+    just the first one. The follow-up ``select.select()`` then finds the raw
+    fd empty (the bytes already moved into that internal buffer) and times
+    out, misreading a genuine arrow press as a bare Esc — with its "[A"/"[B"
+    tail leaking out as literal keys on whatever screen comes next. Raw
+    ``os.read()`` never over-buffers past what's asked for, so it stays in
+    sync with what ``select()`` observes on the fd.
+    """
     if os.name == "nt":
         import msvcrt
 
@@ -64,27 +78,32 @@ def _read_key() -> str | None:
         return ch.decode("latin-1", "ignore").lower()
 
     import select as _select
-    import termios
-    import tty
 
     fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-        if ch == "\x1b":                       # Esc, or the start of an arrow sequence
-            ready, _, _ = _select.select([sys.stdin], [], [], 0.05)
+    ch = os.read(fd, 1).decode("latin-1", "ignore")
+    if ch == "\x1b":                           # Esc, or the start of an arrow sequence
+        seq = ""
+        deadline = time.monotonic() + 0.15
+        while len(seq) < 2:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            ready, _, _ = _select.select([fd], [], [], remaining)
             if not ready:
-                return "esc"                   # bare Esc — nothing follows
-            seq = sys.stdin.read(2)
-            return {"[A": "up", "[B": "down"}.get(seq, "esc")
-        if ch in ("\r", "\n"):
-            return "enter"
-        if ch == "\x03":
-            raise KeyboardInterrupt
-        return ch.lower()
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                break
+            seq += os.read(fd, 1).decode("latin-1", "ignore")
+        if not seq:
+            return "esc"                       # bare Esc — nothing followed
+        # Any other sequence (Left/Right, Home/End, F-keys, ...) is unhandled —
+        # ignore it rather than treating it as Esc. Esc means "back" and, at
+        # the top-level menu, "back" means quit; conflating an unsupported key
+        # with a real Esc press made stray keys silently exit the whole app.
+        return {"[A": "up", "[B": "down"}.get(seq)
+    if ch in ("\r", "\n"):
+        return "enter"
+    if ch == "\x03":
+        raise KeyboardInterrupt
+    return ch.lower()
 
 
 def _render(title: str, subtitle: str, options: list[str], index: int) -> None:
@@ -196,24 +215,44 @@ def select(title: str, options: list[str], subtitle: str = "", index: int = 0) -
         return int(raw) - 1 if raw.isdigit() and 1 <= int(raw) <= len(options) else None
 
     _clear()                                   # full clear once on entry
+
+    if os.name == "nt":
+        return _select_loop(title, subtitle, options, index)
+
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
     try:
-        while True:
-            _render(title, subtitle, options, index)
-            try:
-                key = _read_key()
-            except KeyboardInterrupt:
-                return None
-            if key == "up":
-                index = (index - 1) % len(options)
-            elif key == "down":
-                index = (index + 1) % len(options)
-            elif key == "enter":
-                return index
-            elif key == "esc":
-                return None
+        # cbreak, NOT raw: this mode is held for the whole loop (rendering
+        # included), and tty.setraw() would also clear OPOST/ONLCR — with output
+        # post-processing off, "\n" stops implying a carriage return and every
+        # printed line marches one step further right (a staircase). cbreak turns
+        # off only echo and line buffering, which is all _read_key needs.
+        tty.setcbreak(fd)
+        return _select_loop(title, subtitle, options, index)
     finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
         console.file.write("\033[?25h")        # always restore the cursor
         console.file.flush()
+
+
+def _select_loop(title: str, subtitle: str, options: list[str], index: int) -> int | None:
+    while True:
+        _render(title, subtitle, options, index)
+        try:
+            key = _read_key()
+        except KeyboardInterrupt:
+            return None
+        if key == "up":
+            index = (index - 1) % len(options)
+        elif key == "down":
+            index = (index + 1) % len(options)
+        elif key == "enter":
+            return index
+        elif key == "esc":
+            return None
 
 
 # ── .env read / write ────────────────────────────────────────────────────────
