@@ -14,29 +14,30 @@
 
 ---
 
-You want your own AI agent — a trading desk, a research bot, a support
-automation. Building one from scratch means re-implementing the capabilities
-*every* serious agent needs — model wiring, tool calling, memory, planning,
-delegation, safety, deployment — before any real work begins.
+You want your own AI agent — a trading desk, a research bot, a support automation.  
+Building one from scratch means re-implementing everything every serious agent needs: model wiring, tool calling, memory, planning, delegation, safety, and deployment — before any real work begins.
 
-**genesis-agent is that foundation, already built — and kept current with the
-frontier.** A clean, lightweight base for *any* vertical agent: copy the folder,
-describe the role in `persona.md`, drop your domain tools into `tools/` — done.
-Everything generic is finished and stays frozen: providers (OpenAI · Anthropic ·
-OpenRouter · offline Ollama), automatic tool discovery + MCP, the agent loop
-with retries and usage limits, memory with auto-compaction, planning, sub-agent
-delegation, a sandbox-and-approval safety layer, a live console, and
-headless / Docker / cron deployment. You write only what makes your agent *yours*.
+**genesis-agent is that foundation, already built.**
 
-And unlike heavyweight frameworks, there's no magic to fight and little to carry:
-the whole engine is ~8k lines of readable Python on Pydantic AI (Python 3.10+,
-packaged with `uv`, six core dependencies) — light on resources, small enough to
-read in a sitting, simple enough to trust in production.
+A clean, lightweight base for any vertical agent:  
+copy the folder → describe the role in `persona.md` → drop your tools into `tools/` → done.
 
-**It runs in any environment from day one** — interactive terminal, headless
-HTTP service, Docker container, or on a schedule via cron / Task Scheduler — and
-a fresh copy is already a working general-purpose agent with six built-in tools
-(file read/write, list dir, shell, fetch URL, **web search**):
+Everything generic stays finished and frozen:
+- Providers (OpenAI · Anthropic · OpenRouter · offline Ollama)
+- Automatic tool discovery + MCP
+- Agent loop with retries and usage limits
+- Memory with auto-compaction
+- Planning and sub-agent delegation
+- Sandbox + approval safety layer
+- Live console
+- Headless / Docker / cron deployment
+
+You only write what makes the agent *yours*.
+
+Unlike heavyweight frameworks, there is almost nothing to fight:  
+~8k lines of readable Python on Pydantic AI, six core dependencies, light enough to run anywhere and simple enough to trust in production.
+
+A fresh copy is already a working general-purpose agent with built-in tools (files, shell, fetch, web search) and runs from day one in the terminal, as an HTTP service, in Docker, or on a schedule.
 
 <img src="docs/assets/genesis-agent-chat-cli.png" alt="genesis-agent live console: identity and capabilities panels, then a task executed as a reasoning tree with a tokens/time footer">
 
